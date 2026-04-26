@@ -279,3 +279,9 @@ At any point in development, a fresh session with no conversation history can op
 - What the primary user journey is and whether it is currently walkable
 
 That is what `RESUME.md`, `intent-store.yaml`, `contracts.yaml`, `decisions.yaml`, `threat-model.yaml`, and `invariants.yaml` exist to provide. The project is self-describing. The session is always resumable. The work is always governed.
+
+---
+
+## GADP Self-Improvement and Analysis
+
+GitHub repo has a file "gadp-handoff.md" which I generate after every session I conduct where I explore how is the protocol working in real-life, what needs fixing, the bugs that I notice, etc. I also dump my thoughts for how it should be to a high-reasoning model, let it generate comprehensive sturctual changes and then put it all in this document. Always read this when understanding is required on how were things working and where does it all go in the future.
