@@ -1,0 +1,673 @@
+---
+# gadp/config/invariant-defaults.yaml
+# GADP v3.0
+#
+# Default invariant templates read by Outcome Resolver during Phase 7.
+# These are starting points, not final values — every invariant written to
+# invariants.yaml must be adapted to the project's confirmed architecture
+# decisions and technology choices.
+#
+# Usage:
+#   1. For each category, check the `applies_when` condition against the project.
+#   2. Copy matching templates into invariants.yaml.
+#   3. Replace every [PLACEHOLDER] with the project-specific value before writing.
+#   4. Set `source_decision` to the DEC-* ID from decisions.yaml that drove
+#      this invariant, OR set `source_intent` to the SI-* or QI-* that drove it.
+#      Every invariant must have exactly one source. Orphaned invariants are a
+#      validation failure.
+#   5. Run gadp_validate.py after writing — it checks source resolution.
+#
+# Invariant retirement:
+#   INV-U-* — retired in GADP v3.0. Do not generate. All design token
+#   enforcement uses INV-DQ-001 (canonical, hard_stop).
+#
+# violation_action values:
+#   hard_stop  — blocks all work. CI fails. Sprint cannot advance.
+#   audit_flag — recorded and tracked. Work continues. Remediation contract
+#                created by Planner. Cleared only when detection_command
+#                produces zero matches.
+
+# ─────────────────────────────────────────────────────────────────
+# ARCHITECTURE INVARIANTS — INV-A-*
+# Applies when: has_backend: true (most), or based on specific decisions
+# ─────────────────────────────────────────────────────────────────
+
+architecture:
+
+  - id: INV-A-VERSIONING
+    category: architecture
+    applies_when: "has_backend: true"
+    mandatory: true
+    rule: "All API routes must include a /api/v[N]/ version prefix"
+    source_decision: "[DEC-ID for API style decision — required]"
+    source_intent: null
+    auto_detectable: true
+    detection_command: >
+      grep -rn 'router\.\|app\.\(get\|post\|put\|delete\|patch\)' src/
+      --include='*.{ts,js,py,rb}'
+      | grep -Ev '/api/v[0-9]+/'
+      | grep -v '//'
+      | grep -v 'health\|ready\|metrics'
+    detection_note: >
+      Any route definition without a /api/v[N]/ prefix is a violation.
+      Health (/health), readiness (/ready), and metrics (/metrics) endpoints
+      are exempt — they are infrastructure routes, not API routes.
+      Websocket upgrade paths (/ws, /socket.io) are also exempt.
+    violation_action: hard_stop
+    adaptation_notes: >
+      Replace [N] with the version number from decisions.yaml API style decision
+      (typically 1 for a new project). If the project uses a different versioning
+      scheme (e.g. header-based versioning), update the rule and detection_command
+      to reflect the actual scheme and source it to the same DEC-* ID.
+
+  - id: INV-A-ORM
+    category: architecture
+    applies_when: "has_database: true"
+    mandatory: true
+    rule: "Database access uses ORM only — no raw SQL queries in src/"
+    source_decision: "[DEC-ID for ORM/query layer decision — required]"
+    source_intent: null
+    auto_detectable: true
+    detection_command: >
+      grep -rn
+      'db\.query\b\|db\.execute\b\|db\.run\b\|\.raw(\|cursor\.execute\|text(`SELECT\|text(`INSERT\|text(`UPDATE\|text(`DELETE'
+      src/ --include='*.{ts,js,py,rb}'
+      | grep -v '//'
+      | grep -v '\.test\.\|\.spec\.'
+    detection_note: >
+      Matches raw query calls across common ORM escape hatches (Prisma $queryRaw,
+      Drizzle sql``, SQLAlchemy text(), Sequelize query()). Any match is a
+      violation. Migration files in ./migrations/ are exempt — they necessarily
+      contain raw SQL.
+    violation_action: hard_stop
+    adaptation_notes: >
+      Adapt the grep patterns to the specific ORM from decisions.yaml.
+      Prisma: add '\$queryRaw\|\$executeRaw'. Drizzle: add 'sql`'. SQLAlchemy:
+      add 'session\.execute(text'. Django: add '\.raw(\|cursor\.execute'.
+      Migration files are always exempt — add '| grep -v migrations/' if needed.
+
+  - id: INV-A-FRAMEWORK
+    category: architecture
+    applies_when: "always — one per stack dimension in decisions.yaml"
+    mandatory: false
+    rule: "Application uses [framework from decisions.yaml] — no direct use of lower-level primitives it abstracts"
+    source_decision: "[DEC-ID for framework decision — required]"
+    source_intent: null
+    auto_detectable: true
+    detection_command: >
+      grep -rn 'require(['"'"'http['"'"']\|require(['"'"'express['"'"']'
+      src/ --include='*.{ts,js}'
+      | grep -v node_modules
+      | grep -v '//'
+    detection_note: >
+      Replace the grep pattern with the specific lower-level primitive the
+      framework abstracts. Example for Next.js: grep for direct use of
+      node:http instead of next/server. Example for NestJS: grep for direct
+      express() calls instead of @Module() decorators. Adapt to the stack.
+    violation_action: audit_flag
+    adaptation_notes: >
+      Generate one of these per major framework decision if there is a real
+      risk of the framework being bypassed. Not every decision needs this —
+      focus on cases where bypassing the framework would break conventions
+      the other invariants rely on (routing, middleware, error handling).
+
+# ─────────────────────────────────────────────────────────────────
+# SECURITY INVARIANTS — INV-S-*
+# Applies when: has_auth: true or security_surface intents present
+# ─────────────────────────────────────────────────────────────────
+
+security:
+
+  - id: INV-S-TOKEN-STORAGE
+    category: security
+    applies_when: "has_auth: true"
+    mandatory: true
+    rule: "Auth tokens stored in httpOnly cookies only — never in localStorage or sessionStorage"
+    source_decision: null
+    source_intent: "[SI-* for auth_credential surface — required]"
+    auto_detectable: true
+    detection_command: >
+      grep -rn
+      'localStorage\.setItem\|sessionStorage\.setItem\|localStorage\.getItem\|sessionStorage\.getItem'
+      src/ --include='*.{ts,tsx,js,jsx,svelte,vue}'
+      | grep -i 'token\|jwt\|auth\|session\|bearer'
+      | grep -v '//'
+    detection_note: >
+      Any match storing or reading a token from localStorage/sessionStorage
+      is a hard violation. Token names to watch for: token, jwt, accessToken,
+      refreshToken, auth, session, bearer, Authorization.
+      Cookie-based storage is acceptable — this invariant does not prohibit
+      localStorage for non-sensitive data (user preferences, UI state, etc.).
+    violation_action: hard_stop
+    adaptation_notes: >
+      Source to the SI-* intent generated from the auth_credential security
+      surface in the threat model. If the product uses a different auth
+      mechanism (e.g. API keys in headers for a CLI tool), update the rule
+      to match the auth strategy from decisions.yaml.
+
+  - id: INV-S-PASSWORD-HASH
+    category: security
+    applies_when: "has_auth: true AND auth strategy stores passwords locally"
+    mandatory: true
+    rule: "Passwords hashed with bcrypt (cost >= 12), argon2id, or scrypt — never stored plaintext or with MD5/SHA1"
+    source_decision: null
+    source_intent: "[SI-* for auth_credential surface — required]"
+    auto_detectable: true
+    detection_command: >
+      grep -rn
+      'md5\|sha1\|sha256\|createHash'
+      src/ --include='*.{ts,js,py,rb}'
+      | grep -i 'password\|passwd\|pwd'
+      | grep -v '//'
+      | grep -v '\.test\.\|\.spec\.'
+    detection_note: >
+      Matches use of weak hash functions on password-related variables.
+      Any match is a violation. MD5 and SHA1 are cryptographically broken
+      for password storage. SHA256 without a salt and work factor is also
+      unacceptable. Only bcrypt, argon2id, and scrypt are acceptable.
+    violation_action: hard_stop
+    adaptation_notes: >
+      Skip this invariant if the project uses an external auth provider
+      (Auth0, Clerk, Supabase Auth, Firebase Auth) — password hashing is
+      the provider's responsibility, not the application's. Record the
+      skip as an ASSUMED entry in invariants.yaml with the provider name.
+
+  - id: INV-S-NO-SECRETS
+    category: security
+    applies_when: "always"
+    mandatory: true
+    rule: "No secrets, API keys, or credentials hardcoded in source files or committed to version control"
+    source_decision: null
+    source_intent: "[SI-* for any security surface — use first SI-* if multiple]"
+    auto_detectable: true
+    detection_command: >
+      grep -rEn
+      '(api_key|apikey|api-key|secret|password|passwd|token|credential|private_key)\s*[=:]\s*["\x27][^"\x27$\{][^"\x27]{6,}'
+      src/ --include='*.{ts,tsx,js,jsx,py,rb,go}'
+      | grep -v '//'
+      | grep -v '\.test\.\|\.spec\.'
+      | grep -v '\.example\|placeholder\|change.me\|your.key.here'
+    detection_note: >
+      Matches assignments of what appear to be secret values (longer than 6
+      chars, not a template placeholder). False positives are possible —
+      review each match manually. The match does not catch secrets in git
+      history; run trufflehog for historical scanning.
+    violation_action: hard_stop
+    adaptation_notes: >
+      Also run trufflehog in CI (configured in S0-T008). This grep catches
+      new additions in the current working tree. Trufflehog catches historical
+      commits. Both are needed for complete coverage.
+
+  - id: INV-S-ERROR-SHAPE
+    category: security
+    applies_when: "has_backend: true"
+    mandatory: true
+    rule: "All API error responses follow { error: { code, message, request_id } } — no stack traces or internal details exposed"
+    source_decision: null
+    source_intent: "[SI-* for any user_input or permission_gate surface — required]"
+    auto_detectable: true
+    detection_command: >
+      grep -rn
+      'res\.json\|res\.send\|return.*json\|jsonify\|render_json'
+      src/ --include='*.{ts,js,py,rb}'
+      | grep -v '//'
+      | grep -i 'error\|err\|exception\|fail'
+      | grep -v '{ error:\|"error":\|error_response\|errorResponse\|AppError'
+    detection_note: >
+      Looks for error responses not using the standard shape. Review each
+      match — the grep catches lines sending a response with error-related
+      content that does not use the canonical errorResponse helper from
+      src/lib/errors.[ext]. Stack traces and raw exception messages in
+      responses are the primary target.
+    violation_action: hard_stop
+    adaptation_notes: >
+      Adapt the grep for the project's specific response helper name
+      (errorResponse, error_response, render_error, etc.) from src/lib/errors.[ext].
+      The pattern should match uses of the helper function, not the shape directly —
+      this ensures the helper is always used rather than inline error construction.
+
+  - id: INV-S-NO-CONSOLE-LOG
+    category: security
+    applies_when: "always"
+    mandatory: true
+    rule: "No console.log calls in src/ — all logging through src/lib/logger.[ext]"
+    source_decision: null
+    source_intent: "[SI-* for pii_storage or any logging-adjacent surface]"
+    auto_detectable: true
+    detection_command: >
+      grep -rn 'console\.log\|console\.error\|console\.warn\|console\.info\|console\.debug'
+      src/ --include='*.{ts,tsx,js,jsx}'
+      | grep -v '//'
+      | grep -v '\.test\.\|\.spec\.'
+    detection_note: >
+      Any match is a violation. console.* in src/ risks leaking PII, tokens,
+      or internal state to browser developer tools and application logs without
+      redaction or level filtering. Test files are exempt — they may use
+      console for debugging. The logger module handles level filtering,
+      serialisation, and PII redaction.
+    violation_action: hard_stop
+    adaptation_notes: >
+      For Python projects, replace with a grep for 'print(' that is not
+      inside a test file. For Ruby, grep for 'puts ' and 'p ' outside tests.
+      The principle is the same across languages — all log output routes
+      through the structured logger.
+
+  - id: INV-S-PII-NOT-LOGGED
+    category: security
+    applies_when: "regulatory_exposure is GDPR, HIPAA, or PCI-DSS"
+    mandatory: true
+    rule: "PII field names must not appear in log output — log IDs only"
+    source_decision: null
+    source_intent: "[SI-* for pii_storage surface — required]"
+    auto_detectable: true
+    detection_command: >
+      grep -rn
+      'logger\.\|log\.\|logging\.'
+      src/ --include='*.{ts,js,py,rb}'
+      | grep -Ei 'email|password|phone|dob|date_of_birth|ssn|tax_id|credit_card|card_number|cvv|first_name|last_name|address|postcode|zipcode'
+      | grep -v '//'
+    detection_note: >
+      Matches log calls that reference PII field names inline. Any match
+      should be reviewed — the field name in a log call suggests the value
+      may be serialised. User IDs and timestamps are acceptable in logs;
+      raw field values are not. The logger.req serialiser in src/lib/logger
+      should strip PII fields automatically.
+    violation_action: hard_stop
+    adaptation_notes: >
+      Extend the field name list based on the SENSITIVE entities identified
+      in the Outcome Resolver Phase 3 data architecture. Add any domain-specific
+      PII field names (e.g. patient_id, account_number, claim_id) that appear
+      in the data model.
+
+# ─────────────────────────────────────────────────────────────────
+# DATA INVARIANTS — INV-D-*
+# Applies when: has_database: true
+# ─────────────────────────────────────────────────────────────────
+
+data:
+
+  - id: INV-D-MIGRATION
+    category: data
+    applies_when: "has_database: true"
+    mandatory: true
+    rule: "Every schema change requires a corresponding migration file — no schema change without a migration"
+    source_decision: "[DEC-ID for database engine or ORM decision — required]"
+    source_intent: null
+    auto_detectable: true
+    detection_command: >
+      git diff --name-only HEAD
+      | grep -E '\.(prisma|sql|rb)$'
+      | while read f; do
+          git diff --name-only HEAD | grep -q 'migrations/' || echo "VIOLATION: $f changed without migration"
+        done
+    detection_note: >
+      Compares schema files changed in the current diff against migration files.
+      A schema file change without a corresponding migration file change is a
+      violation. Migration files are in ./migrations/ by convention.
+      Adapt the grep pattern to the ORM: Prisma uses schema.prisma, Drizzle
+      uses drizzle.config.ts, Django uses models.py, Rails uses schema.rb.
+    violation_action: hard_stop
+    adaptation_notes: >
+      The detection_command detects the absence of a migration when a schema
+      file changes. It does not validate that the migration is correct — that
+      is a code review responsibility. Adapt the file extension grep to match
+      the ORM's schema file type from decisions.yaml.
+
+  - id: INV-D-NO-SENSITIVE-LOG
+    category: data
+    applies_when: "has_database: true AND regulatory_exposure is not none"
+    mandatory: true
+    rule: "SENSITIVE entity fields must not be present in any log output after deletion"
+    source_decision: null
+    source_intent: "[SI-* for pii_storage or information_disclosure surface — required]"
+    auto_detectable: false
+    detection_command: null
+    detection_note: >
+      Cannot be automatically detected via grep — requires integration test
+      that triggers deletion, then scans log output for deleted field values.
+      Manual review during audit: run a deletion request and inspect the
+      log stream for residual PII. Document the review in the audit log.
+    violation_action: audit_flag
+    adaptation_notes: >
+      Add an integration test to tests/contracts/ for each deletion contract
+      that asserts log output does not contain the deleted entity's PII fields.
+      The test fixture should use a recognisable synthetic value (e.g.
+      email: test-pii-sentinel@example.com) so it is detectable in log grep.
+
+  - id: INV-D-BACKUP-VERIFIED
+    category: data
+    applies_when: "has_database: true AND deployment_target is staging or production"
+    mandatory: false
+    rule: "Database backup restore procedure is documented and tested — restore drill completed this quarter"
+    source_decision: "[DEC-ID for database engine — required]"
+    source_intent: null
+    auto_detectable: false
+    detection_command: null
+    detection_note: >
+      Manual review only. Check docs/runbooks/db-restore.md — it must not
+      contain stub markers (TODO, PLACEHOLDER, your command here). Check the
+      audit log for a backup_restore_drill event in the past 90 days.
+      If neither condition is met: audit_flag.
+    violation_action: audit_flag
+    adaptation_notes: >
+      This invariant becomes mandatory (hard_stop) for production deployments
+      with enterprise customers or regulatory exposure. Promote to hard_stop
+      and source to the relevant compliance QI-* entry when appropriate.
+
+# ─────────────────────────────────────────────────────────────────
+# PERFORMANCE INVARIANTS — INV-P-*
+# Applies when: has_ui: true or QI-BUNDLE present
+# INV-P-005 applies when: has_backend: true
+# ─────────────────────────────────────────────────────────────────
+
+performance:
+
+  - id: INV-P-001
+    category: performance
+    applies_when: "has_ui: true"
+    mandatory: true
+    rule: "No synchronous network calls on the main thread — all data fetching uses async/await or Promises"
+    source_decision: null
+    source_intent: "QI-LCP"
+    auto_detectable: true
+    detection_command: >
+      grep -rn
+      'XMLHttpRequest\|\.open('
+      src/ --include='*.{ts,tsx,js,jsx,svelte,vue}'
+      | grep -v '//'
+      | grep -v 'async'
+    detection_note: >
+      Any match is a violation. XMLHttpRequest used synchronously blocks the
+      main thread and prevents the browser from painting, directly causing
+      LCP and INP regressions. Modern fetch() is always async — this grep
+      targets the synchronous XHR API specifically.
+    violation_action: hard_stop
+    adaptation_notes: >
+      In most modern frameworks (Next.js, SvelteKit, Nuxt), synchronous XHR
+      is essentially impossible — the framework's data fetching layer is always
+      async. This invariant is most relevant for projects with legacy code or
+      third-party libraries that use synchronous XHR internally.
+
+  - id: INV-P-002
+    category: performance
+    applies_when: "has_ui: true"
+    mandatory: true
+    rule: "All <script> tags in HTML templates use defer, async, or type=module — no render-blocking scripts"
+    source_decision: null
+    source_intent: "QI-LCP"
+    auto_detectable: true
+    detection_command: >
+      grep -rn '<script'
+      src/ public/ --include='*.{html,tsx,jsx,svelte,vue}'
+      | grep -v 'defer\|async\|type="module"\|type='"'"'module'"'"''
+      | grep -v '//'
+    detection_note: >
+      Any <script> tag without defer, async, or type=module blocks HTML parsing
+      and delays first paint. Any match is a violation. Framework-injected
+      scripts (Next.js, Vite) are handled by the framework and not caught by
+      this grep — focus is on hand-authored script tags in template files.
+    violation_action: hard_stop
+    adaptation_notes: >
+      Most SPA frameworks never render raw <script> tags in component files.
+      This invariant primarily applies to marketing sites, SSR pages with
+      third-party script tags (analytics, chat widgets, A/B testing), and
+      legacy templates. If the project has no hand-authored HTML: this grep
+      will produce zero matches and is effectively a no-op invariant that
+      still enforces the rule if scripts are added later.
+
+  - id: INV-P-003
+    category: performance
+    applies_when: "has_ui: true"
+    mandatory: true
+    rule: "All <img> elements have explicit width and height attributes to prevent layout shift"
+    source_decision: null
+    source_intent: "QI-CLS"
+    auto_detectable: true
+    detection_command: >
+      grep -rn '<img'
+      src/ --include='*.{tsx,jsx,html,svelte,vue}'
+      | grep -v 'width.*height\|height.*width\|fill\|layout\|sizes'
+      | grep -v '//'
+    detection_note: >
+      Images without explicit dimensions cause the browser to reserve no space
+      before the image loads, producing layout shift as it loads. Any match
+      missing width+height or a fill/layout prop is a violation.
+      Next.js Image component with fill prop is exempt — it uses CSS positioning.
+      Svelte <enhanced:img> is exempt. Plain <img> without dimensions is not.
+    violation_action: audit_flag
+    adaptation_notes: >
+      Framework image components (next/image, nuxt/image, @astrojs/image) handle
+      dimensions automatically when src is a local import — they are safe.
+      Remote image URLs (external CDN, user-uploaded content) require explicit
+      width and height even when using framework components unless the fill prop
+      is used with a positioned container.
+
+  - id: INV-P-004
+    category: performance
+    applies_when: "has_ui: true — only if framework produces a browser bundle (see framework-globs.yaml)"
+    mandatory: true
+    rule: "Compressed JS bundle must not exceed the QI-BUNDLE target for this product type"
+    source_decision: null
+    source_intent: "QI-BUNDLE"
+    auto_detectable: false
+    detection_command: "npx bundlesize"
+    detection_note: >
+      Runs bundlesize against bundlesize.config.json, which is seeded at
+      S0-T006 with the framework glob from gadp/config/framework-globs.yaml.
+      Two thresholds: Sprint 1 tolerance (target + 150kb) and hard target.
+      The Sprint 1 tolerance entry is removed when Sprint 1 is declared complete.
+      If bundlesize.config.json does not exist: this invariant cannot be checked.
+      Fail loudly if the config is missing.
+    violation_action: hard_stop
+    adaptation_notes: >
+      If the framework does not produce a browser bundle (framework-globs.yaml
+      browser_bundle: false), do not generate this invariant. QI-BUNDLE also
+      does not apply. Skip both.
+
+  - id: INV-P-005
+    category: performance
+    applies_when: "has_backend: true"
+    mandatory: true
+    rule: "No N+1 query patterns in the repository layer — related records fetched in a single query or batch"
+    source_decision: null
+    source_intent: "QI-P95"
+    auto_detectable: false
+    detection_command: null
+    detection_note: >
+      Cannot be detected via static analysis — the N+1 pattern depends on
+      runtime execution order. Manual review procedure: enable ORM query
+      logging in the test environment (Prisma: DEBUG="prisma:query",
+      Django: LOGGING with django.db.backends, Sequelize: logging: console.log).
+      Run the full test suite with logging active. Inspect for sequences of
+      repeated queries with incrementing WHERE id = N. Each sequence is a
+      potential N+1. This is the only invariant where detection_command is
+      intentionally null.
+    violation_action: audit_flag
+    adaptation_notes: >
+      The ORM-specific logging configuration differs:
+      Prisma: set DATABASE_URL with ?connection_limit=1 in test and
+              DEBUG="prisma:query" env var.
+      Drizzle: pass logger: true to drizzle().
+      SQLAlchemy: echo=True on create_engine().
+      Sequelize: logging: (sql) => console.log(sql) in options.
+      Django: add 'django.db.backends' to LOGGING handlers.
+
+# ─────────────────────────────────────────────────────────────────
+# DESIGN QUALITY INVARIANTS — INV-DQ-*
+# Applies when: has_ui: true
+# INV-DQ-001 is canonical — no INV-U-* entries ever.
+# ─────────────────────────────────────────────────────────────────
+
+design_quality:
+
+  - id: INV-DQ-001
+    category: design_quality
+    applies_when: "has_ui: true"
+    mandatory: true
+    canonical: true
+    rule: "All color values reference Tailwind theme tokens or CSS custom properties — no hardcoded hex values or color names in src/"
+    source_decision: "[DEC-ID for CSS approach decision — required]"
+    source_intent: null
+    auto_detectable: true
+    detection_command: >
+      grep -rEn '#[0-9a-fA-F]{3,8}'
+      src/ --include='*.{ts,tsx,css,scss,svelte,vue}'
+      | grep -v 'design-tokens\|tokens\|//'
+      &&
+      grep -rEn '\b(red|blue|green|yellow|white|black|gray|grey|orange|purple|pink)\b'
+      src/components/ src/app/ --include='*.{ts,tsx,svelte,vue}'
+      | grep 'className\|class='
+      | grep -v '//'
+    detection_note: >
+      Two checks run together. First: any hardcoded hex value in source files.
+      Second: any bare color name in className or class attributes. Both are
+      violations. Token references (text-primary, bg-error, border-neutral-200)
+      are correct and do not match. Design token definition files themselves
+      (design-tokens.css, tailwind.config.ts) are intentionally exempt — they
+      contain the canonical hex definitions. Add grep -v for those specific
+      files if they are in the src/ tree.
+    violation_action: hard_stop
+    retirement_note: >
+      INV-U-001 through INV-U-NNN are retired. Do not generate them.
+      INV-DQ-001 is the canonical replacement. It covers all cases that
+      INV-U-* covered and adds the color name check.
+    adaptation_notes: >
+      For CSS Modules projects (not Tailwind): replace the className/class check
+      with a grep for raw color values in .module.css files excluding the token
+      definition file. For Svelte: include .svelte files in both checks.
+      For Vue: include .vue files in both checks.
+
+  - id: INV-DQ-002
+    category: design_quality
+    applies_when: "has_ui: true"
+    mandatory: true
+    rule: "Component files must not use inline style={{ }} attributes with literal color, spacing, or font values"
+    source_decision: "[DEC-ID for CSS approach decision — required]"
+    source_intent: null
+    auto_detectable: true
+    detection_command: >
+      grep -rn 'style={{' src/components/ src/app/
+      --include='*.{tsx,jsx}'
+      | grep -v 'var(--\|token\|design\|theme\|undefined\|null'
+      | grep -v '//'
+    detection_note: >
+      Matches inline style attributes with apparent literal values. Review each
+      match — computed values using CSS variables (var(--color-primary)) are
+      acceptable. Inline style with a literal hex, named color, or literal
+      pixel value is a violation. Dynamic styles that compute a token reference
+      at runtime are also acceptable.
+    violation_action: audit_flag
+    adaptation_notes: >
+      Svelte uses style: directives instead of style={{ }}. Adapt the grep to
+      'style:color=\|style:background=\|style:padding=\|style:margin=' for
+      Svelte projects. Vue uses :style binding — adapt to ':style="{.*:#\|:style="{.*px''.
+
+  - id: INV-DQ-003
+    category: design_quality
+    applies_when: "has_ui: true"
+    mandatory: true
+    rule: "Font sizes use Tailwind type scale classes or theme tokens — no arbitrary rem or px font sizes"
+    source_decision: "[DEC-ID for CSS approach decision — required]"
+    source_intent: null
+    auto_detectable: true
+    detection_command: >
+      grep -rn 'fontSize:\|font-size:'
+      src/ --include='*.{ts,tsx,css,scss}'
+      | grep -Ev '(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl):|var\(--|theme\(|text-\[|rem\]|px\]'
+      | grep -v '//'
+    detection_note: >
+      Matches font-size declarations that do not use the Tailwind scale or
+      CSS custom properties. Tailwind arbitrary values (text-[14px]) are
+      permitted but should be rare — prefer scale tokens. The grep excludes
+      known scale names (xs through 9xl) and theme() references.
+    violation_action: audit_flag
+    adaptation_notes: >
+      If the project defines additional font size tokens in tailwind.config
+      (e.g. display, caption, overline), add them to the exclusion list in
+      the grep pattern. The goal is to catch arbitrary pixel/rem values
+      that bypass the scale entirely, not to prohibit any extension of it.
+
+  - id: INV-DQ-004
+    category: design_quality
+    applies_when: "has_ui: true"
+    mandatory: true
+    rule: "Padding and margin use Tailwind spacing scale or theme tokens — no arbitrary pixel values"
+    source_decision: "[DEC-ID for CSS approach decision — required]"
+    source_intent: null
+    auto_detectable: true
+    detection_command: >
+      grep -rn 'padding:\|margin:'
+      src/components/ src/app/ --include='*.{ts,tsx,css,scss}'
+      | grep -Ev '(0|auto|var\(--|space-[0-9]|theme\(|p-\[|m-\[)'
+      | grep -v '//'
+    detection_note: >
+      Matches padding and margin declarations that use arbitrary values.
+      Tailwind arbitrary spacing (p-[13px]) is permitted but should be rare —
+      prefer scale values. 0 and auto are always acceptable. The grep targets
+      the CSS properties in component stylesheets, not Tailwind class names
+      (those are already validated by INV-DQ-001 through the token check).
+    violation_action: audit_flag
+    adaptation_notes: >
+      For CSS Modules projects, this grep runs against .module.css files.
+      For styled-components or emotion, grep for padding and margin in
+      template literal strings — the pattern will need significant adaptation.
+      Consider whether this invariant is meaningful for the project's CSS
+      approach before including it.
+
+  - id: INV-DQ-005
+    category: design_quality
+    applies_when: "has_ui: true"
+    mandatory: true
+    rule: "All interactive elements (buttons, links, inputs, selects) have accessible names — visible text, aria-label, or aria-labelledby"
+    source_decision: null
+    source_intent: "[QI-A11Y if present — otherwise leave source_intent: null and note the gap]"
+    auto_detectable: false
+    detection_command: "npx playwright test tests/accessibility/ --reporter=list"
+    detection_note: >
+      Requires the accessibility test stubs generated by Project Setup S0-T007.
+      Playwright + axe-playwright runs axe against each Sprint 1 screen in the
+      populated state. The accessible name check is one of axe's core rules —
+      it fires for buttons without text, icon-only buttons without aria-label,
+      and inputs without associated labels. Visual snapshots are stored in
+      ./artifacts/visual-baseline/ for regression comparison.
+    violation_action: hard_stop
+    adaptation_notes: >
+      The axe rule for accessible names is 'button-name', 'link-name', and
+      'label'. If the project uses a different test runner for accessibility
+      (jest-axe, cypress-axe), adapt the detection_command accordingly.
+      The invariant requirement does not change — only the tool running it.
+
+# ─────────────────────────────────────────────────────────────────
+# QUALITY INVARIANTS — INV-Q-*
+# Applies when: a maintainability QI-* with an explicit coverage target exists
+# Do NOT generate if no coverage target QI-* is present.
+# ─────────────────────────────────────────────────────────────────
+
+quality:
+
+  - id: INV-Q-COVERAGE
+    category: quality
+    applies_when: "intents.quality contains a maintainability QI-* with explicit coverage target"
+    mandatory: false
+    conditional: true
+    condition_check: "Read intent-store.yaml intents.quality — if no QI-* with aspect: maintainability and a numeric coverage target: do not generate this invariant"
+    rule: "Test coverage must not fall below [N]% at the module level — per [QI-ID]"
+    source_decision: null
+    source_intent: "[QI-ID with coverage target — required — do not create if no such QI exists]"
+    auto_detectable: false
+    detection_command: "[test_cmd from RESUME.md environment] --coverage -- --coverageThreshold='{\"global\":{\"lines\":[N]}}'"
+    detection_note: >
+      Module-level enforcement, not aggregate. Replace [N] with the coverage
+      target from the QI-* intent. A module at 0% coverage is a violation
+      even if the aggregate passes — the detection_command threshold applies
+      globally but the Auditor must also check individual module coverage.
+      Low-coverage modules are a leading indicator of under-tested critical paths.
+    violation_action: audit_flag
+    adaptation_notes: >
+      Adapt the detection_command to the project's test runner:
+      Jest: --coverage --coverageThreshold='{"global":{"lines":N}}'
+      Vitest: --coverage --coverage.thresholds.lines=N
+      pytest: --cov --cov-fail-under=N
+      The threshold is a floor — anything below it fails. The Auditor checks
+      aggregate coverage and flags any module at 0% separately, regardless
+      of whether the aggregate passes.

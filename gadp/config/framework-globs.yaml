@@ -1,0 +1,256 @@
+---
+# gadp/config/framework-globs.yaml
+# GADP v3.0
+#
+# Build output path globs for bundlesize.config.json.
+# Read by Project Setup S0-T006 when writing bundlesize.config.json.
+#
+# Usage:
+#   1. Match the project's framework (from decisions.yaml) to an entry below.
+#   2. Use the `glob` value as the `path` field in bundlesize.config.json.
+#   3. If the framework is not listed: use the `fallback` entry and record an
+#      ASSUMED entry in intent-store.yaml assumptions block.
+#
+# Notes:
+#   - All globs are relative to the project root.
+#   - Globs match only JavaScript bundles — CSS bundles are excluded by design.
+#     INV-P-004 (bundle size) targets JS payload only.
+#   - "browser_bundle: false" means the framework produces no browser-side JS
+#     bundle. bundlesize.config.json is not written for these. QI-BUNDLE and
+#     INV-P-004 do not apply.
+#   - Electron glob targets the renderer process only. The main process is a
+#     Node.js binary and is excluded from bundle size targets.
+
+frameworks:
+
+  - id: nextjs
+    name: "Next.js"
+    initialiser: "create-next-app"
+    build_cmd: "next build"
+    build_output_dir: ".next"
+    glob: ".next/static/**/*.js"
+    browser_bundle: true
+    notes: >
+      Matches all JS chunks in the static directory including page bundles,
+      app router chunks, and the framework runtime. Does not match server-side
+      bundles in .next/server/. Source maps (.js.map) are excluded by the glob.
+
+  - id: vite-react
+    name: "Vite + React"
+    initialiser: "create vite -- --template react-ts"
+    build_cmd: "vite build"
+    build_output_dir: "dist"
+    glob: "dist/assets/*.js"
+    browser_bundle: true
+    notes: >
+      Matches all hashed JS chunks in dist/assets/. Vite code-splits by default —
+      the glob covers all chunks. Use `build.rollupOptions.output.manualChunks`
+      to control split points if the aggregate exceeds QI-BUNDLE.
+
+  - id: vite-vue
+    name: "Vite + Vue"
+    initialiser: "create vite -- --template vue-ts"
+    build_cmd: "vite build"
+    build_output_dir: "dist"
+    glob: "dist/assets/*.js"
+    browser_bundle: true
+    notes: Same glob as Vite + React — Vite output structure is framework-agnostic.
+
+  - id: vite-svelte
+    name: "Vite + Svelte"
+    initialiser: "create vite -- --template svelte-ts"
+    build_cmd: "vite build"
+    build_output_dir: "dist"
+    glob: "dist/assets/*.js"
+    browser_bundle: true
+    notes: Same glob as Vite + React — Vite output structure is framework-agnostic.
+
+  - id: sveltekit
+    name: "SvelteKit"
+    initialiser: "sv create"
+    build_cmd: "vite build"
+    build_output_dir: ".svelte-kit/output/client"
+    glob: ".svelte-kit/output/client/_app/immutable/**/*.js"
+    browser_bundle: true
+    notes: >
+      Matches immutable hashed chunks in the client output. The server output
+      in .svelte-kit/output/server/ is excluded — it runs in Node.js, not the
+      browser. Adapter output location varies (adapter-node → build/, adapter-vercel
+      → .vercel/output/) but bundlesize runs against the pre-adapter build.
+
+  - id: nuxt
+    name: "Nuxt"
+    initialiser: "nuxi init"
+    build_cmd: "nuxt build"
+    build_output_dir: ".nuxt/dist/client"
+    glob: ".nuxt/dist/client/**/*.js"
+    browser_bundle: true
+    notes: >
+      Matches all client-side chunks. Server chunks in .nuxt/dist/server/ are
+      excluded. For Nuxt with static generation (nuxt generate), the output
+      moves to .output/public/_nuxt/**/*.js — update the glob if using
+      static generation mode.
+
+  - id: astro
+    name: "Astro"
+    initialiser: "create astro"
+    build_cmd: "astro build"
+    build_output_dir: "dist"
+    glob: "dist/_astro/*.js"
+    browser_bundle: true
+    notes: >
+      Matches client-side island JS in dist/_astro/. Astro ships zero JS by
+      default — bundles only appear when client: directives are used. A very
+      low or zero bundle size is expected and correct for content-heavy sites.
+      QI-BUNDLE target should reflect this (lower is better, not a concern).
+
+  - id: remix
+    name: "Remix"
+    initialiser: "create-remix"
+    build_cmd: "remix vite:build"
+    build_output_dir: "build/client"
+    glob: "build/client/assets/*.js"
+    browser_bundle: true
+    notes: >
+      Matches client-side chunks in build/client/assets/. The server bundle
+      in build/server/ is excluded. For older Remix (pre-Vite), the output
+      was public/build/**/*.js — check package.json remix.serverBuildPath if
+      using an older version.
+
+  - id: angular
+    name: "Angular"
+    initialiser: "@angular/cli new"
+    build_cmd: "ng build"
+    build_output_dir: "dist/[project-name]"
+    glob: "dist/[project-name]/*.js"
+    browser_bundle: true
+    notes: >
+      Replace [project-name] with the actual project name from angular.json.
+      Angular produces named chunks (main, polyfills, runtime, chunk-*).
+      The glob matches all of them. The QI-BUNDLE target should account for
+      Angular's larger baseline — 250kb is more appropriate than 150kb.
+
+  - id: create-react-app
+    name: "Create React App"
+    initialiser: "create-react-app"
+    build_cmd: "react-scripts build"
+    build_output_dir: "build/static/js"
+    glob: "build/static/js/*.js"
+    browser_bundle: true
+    notes: >
+      CRA is in maintenance mode. If this is a new project, prefer Vite.
+      Matches all JS chunks in build/static/js/ including main, runtime,
+      and lazy-loaded chunks.
+
+  - id: electron
+    name: "Electron"
+    initialiser: "create @quick-start/electron"
+    build_cmd: "electron-builder"
+    build_output_dir: "dist/renderer"
+    glob: "dist/renderer/assets/*.js"
+    browser_bundle: true
+    notes: >
+      Targets the renderer process bundle only. The main process (dist/main/)
+      runs in Node.js and has no meaningful bundle size target. If using
+      Electron + Vite (most common), the renderer builds to dist/renderer/assets/.
+      Adjust if using webpack or a custom build pipeline.
+
+  - id: tauri
+    name: "Tauri"
+    initialiser: "create tauri-app"
+    build_cmd: "tauri build"
+    build_output_dir: "dist"
+    glob: "dist/assets/*.js"
+    browser_bundle: true
+    notes: >
+      Tauri uses Vite for the frontend build by default — output matches the
+      Vite glob. The Rust binary is excluded entirely. bundlesize runs against
+      the frontend JS bundle in dist/assets/, not the final .app or .exe.
+
+  - id: expo
+    name: "Expo (React Native)"
+    initialiser: "create-expo-app"
+    build_cmd: "expo export"
+    build_output_dir: "dist"
+    glob: "dist/**/*.js"
+    browser_bundle: true
+    notes: >
+      Applies to Expo web output only (expo export --platform web).
+      Native iOS and Android bundles are not measured by bundlesize.
+      If targeting web only, QI-BUNDLE applies. If targeting native only,
+      set browser_bundle: false and remove QI-BUNDLE and INV-P-004.
+
+  - id: nestjs
+    name: "NestJS"
+    initialiser: "@nestjs/cli new"
+    build_cmd: "nest build"
+    build_output_dir: "dist"
+    glob: null
+    browser_bundle: false
+    notes: >
+      NestJS is a server-side Node.js framework. No browser bundle is produced.
+      QI-BUNDLE and INV-P-004 do not apply. bundlesize.config.json is not written.
+
+  - id: fastapi
+    name: "FastAPI"
+    initialiser: "uv init + uv add fastapi uvicorn"
+    build_cmd: null
+    build_output_dir: null
+    glob: null
+    browser_bundle: false
+    notes: >
+      FastAPI is a Python API framework. No browser bundle is produced.
+      QI-BUNDLE and INV-P-004 do not apply. bundlesize.config.json is not written.
+
+  - id: django
+    name: "Django"
+    initialiser: "django-admin startproject"
+    build_cmd: "python manage.py collectstatic"
+    build_output_dir: "staticfiles"
+    glob: null
+    browser_bundle: false
+    notes: >
+      Django is a Python web framework. Django itself produces no browser JS
+      bundle. If the project uses a separate frontend (e.g. Vite + React served
+      alongside Django), treat the frontend as its own framework entry and use
+      the appropriate glob. For Django + HTMX or Django templates only: no
+      bundle size target applies.
+
+  - id: rails
+    name: "Ruby on Rails"
+    initialiser: "rails new"
+    build_cmd: "rails assets:precompile"
+    build_output_dir: "public/assets"
+    glob: null
+    browser_bundle: false
+    notes: >
+      Rails is a Ruby web framework. If using importmap (default in Rails 7+),
+      no bundling occurs and QI-BUNDLE does not apply. If using jsbundling-rails
+      with esbuild or rollup, a bundle is produced — update glob to
+      app/assets/builds/*.js and set browser_bundle: true.
+
+  - id: laravel
+    name: "Laravel"
+    initialiser: "composer create-project laravel/laravel"
+    build_cmd: "npm run build"
+    build_output_dir: "public/build/assets"
+    glob: "public/build/assets/*.js"
+    browser_bundle: true
+    notes: >
+      Laravel ships with Vite via laravel-vite-plugin. The frontend build
+      outputs to public/build/assets/. If the project uses only Blade templates
+      with no JS framework, the bundle will be minimal and QI-BUNDLE target
+      should be set low (e.g. 50kb).
+
+fallback:
+  glob: "dist/**/*.js"
+  browser_bundle: true
+  notes: >
+    Used when the project's framework is not listed above. Matches all JS
+    files in dist/ recursively. This glob may over-count if dist/ contains
+    server-side bundles — inspect the output and refine the glob manually.
+    Record an ASSUMED entry in intent-store.yaml when using the fallback:
+      id: A-[N]
+      field: bundlesize_glob
+      assumed_value: "dist/**/*.js (fallback — framework not in framework-globs.yaml)"
+      note: "Verify glob matches only browser-side JS after first build."

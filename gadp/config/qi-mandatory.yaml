@@ -1,0 +1,531 @@
+---
+# gadp/config/qi-mandatory.yaml
+# GADP v3.0
+#
+# Mandatory quality intents by product type and capability flag.
+# Read by Intent Architect during Step 5 — Quality Intents.
+#
+# Usage:
+#   1. Determine which `applies_when` conditions are true for this project.
+#   2. All matching entries under `mandatory` are non-negotiable — include them
+#      in intent-store.yaml exactly as specified. They cannot be marked soft,
+#      removed, or deferred without explicit /approve-decisions with a
+#      documented security or business reason.
+#   3. Consult `derived_by_type` for additional QI-* entries to derive based
+#      on product type and regulatory exposure.
+#   4. Consult `regulatory` for compliance-driven QI-* entries.
+#
+# Constraint levels:
+#   hard — architectural decisions must satisfy this. CI fails if violated.
+#          Cannot be waived without /approve-decisions.
+#   soft — a target to optimise toward. Can be traded for other goals.
+#          Should still be measured and tracked.
+
+# ─────────────────────────────────────────────────────────────────
+# MANDATORY — UI PRODUCTS
+# Applies when: has_ui: true
+# All four entries required. None can be soft.
+# ─────────────────────────────────────────────────────────────────
+
+mandatory_ui:
+
+  - id: QI-LCP
+    aspect: performance
+    statement: "Largest Contentful Paint <= 2.5s on median hardware"
+    target: "2500ms"
+    constraint_level: hard
+    measurement_method: "Lighthouse CI p75 — desktop and mobile profiles"
+    scale_trigger: "p75 LCP exceeds 2.5s for 3 consecutive Lighthouse CI runs"
+    invariant_generated: INV-P-001
+    applies_when: "has_ui: true"
+    notes: >
+      The LCP element must be primary content — not a loading spinner, skeleton,
+      or hero image that hasn't loaded. If the LCP element is a spinner, the
+      metric is technically passing but the experience is not. Builder must
+      ensure the LCP element is identifiable and rendered with real content.
+
+  - id: QI-CLS
+    aspect: performance
+    statement: "Cumulative Layout Shift <= 0.1"
+    target: "0.1"
+    constraint_level: hard
+    measurement_method: "Lighthouse CI p75"
+    scale_trigger: "CLS exceeds 0.1 for 3 consecutive Lighthouse CI runs"
+    invariant_generated: INV-P-003
+    applies_when: "has_ui: true"
+    notes: >
+      CLS is caused by: images without explicit dimensions, dynamically injected
+      content above existing content, web fonts causing text shifts (FOIT/FOUT),
+      and animations that affect layout. INV-P-003 (all images require explicit
+      dimensions) directly addresses the most common cause.
+
+  - id: QI-INP
+    aspect: performance
+    statement: "Interaction to Next Paint <= 200ms"
+    target: "200ms"
+    constraint_level: hard
+    measurement_method: "Lighthouse CI p75"
+    scale_trigger: "INP exceeds 200ms for 3 consecutive Lighthouse CI runs"
+    invariant_generated: INV-P-001
+    applies_when: "has_ui: true"
+    notes: >
+      INP replaces FID as the Core Web Vital for interactivity. It measures the
+      worst interaction latency across the full page lifecycle. Long JavaScript
+      tasks are the primary cause — avoid blocking the main thread with
+      synchronous operations (INV-P-001). 200ms is the "Good" threshold;
+      200–500ms is "Needs Improvement"; above 500ms is "Poor".
+
+  - id: QI-BUNDLE
+    aspect: performance
+    statement: "Compressed JS bundle within target for this product type"
+    # Target is set per-product-type — see bundle_targets below
+    target: null  # Set by Intent Architect from bundle_targets table
+    constraint_level: hard
+    measurement_method: "npx bundlesize — run against production build"
+    scale_trigger: "Bundle exceeds target on any CI build"
+    invariant_generated: INV-P-004
+    applies_when: "has_ui: true"
+    notes: >
+      The target is set from bundle_targets by product type. Two entries are
+      written to bundlesize.config.json: a Sprint 1 tolerance (+150kb) and
+      the hard target. The tolerance entry is removed when Sprint 1 is complete.
+      CLI tools, API products, and server-side-only frameworks produce no
+      browser bundle — QI-BUNDLE does not apply and is not written.
+
+# ─────────────────────────────────────────────────────────────────
+# BUNDLE SIZE TARGETS BY PRODUCT TYPE
+# Used by Intent Architect to set QI-BUNDLE target field.
+# ─────────────────────────────────────────────────────────────────
+
+bundle_targets:
+
+  - product_type: "Marketing site"
+    target_kb: 150
+    rationale: >
+      Marketing sites have the highest performance expectations — visitors
+      arrive cold with no prior cache. 150kb supports rich interactivity
+      while staying within LCP budget on slow connections. Astro and other
+      MPA frameworks often ship well under this.
+
+  - product_type: "Web SaaS"
+    target_kb: 250
+    rationale: >
+      SaaS products carry more application complexity — auth, routing, state
+      management, and multiple views. 250kb is achievable with code splitting
+      and lazy loading. The Sprint 1 tolerance (400kb) accounts for the initial
+      build before optimisation begins.
+
+  - product_type: "Internal tool"
+    target_kb: 300
+    rationale: >
+      Internal tools typically run on corporate hardware and networks, reducing
+      the performance penalty of larger bundles. 300kb gives room for a richer
+      component set and data tables without aggressive splitting.
+
+  - product_type: "Chrome extension"
+    target_kb: 100
+    rationale: >
+      Chrome Web Store guidelines and extension popup constraints make bundle
+      size critical. Extensions load synchronously with every browser tab — a
+      large bundle degrades every browsing session. 100kb is generous; aim lower.
+
+  - product_type: "Desktop app"
+    target_kb: 500
+    rationale: >
+      Desktop apps (Electron, Tauri) run locally with no network cost for the
+      initial load. 500kb is a loose ceiling — the real constraint is startup
+      time, not transfer size. Optimise for cold launch time (< 2s to first
+      paint) rather than bundle bytes.
+
+  - product_type: "Mobile-first PWA"
+    target_kb: 150
+    rationale: >
+      PWAs serve mobile users on variable connections. 150kb matches the
+      marketing site target — mobile-first means the device and connection
+      are not guaranteed to be fast. Service worker caching reduces the
+      repeat-load cost, but the initial install budget stays at 150kb.
+
+  - product_type: "Composite"
+    target_kb: null
+    rationale: >
+      Composite products (multiple types combined) derive the target from the
+      primary type's entry. If unclear, use the most restrictive applicable
+      target and record an ASSUMED entry in intent-store.yaml.
+
+# ─────────────────────────────────────────────────────────────────
+# MANDATORY — BACKEND PRODUCTS
+# Applies when: has_backend: true
+# All three entries required. None can be soft.
+# ─────────────────────────────────────────────────────────────────
+
+mandatory_backend:
+
+  - id: QI-TTFB
+    aspect: performance
+    statement: "Time to First Byte <= 800ms at p95"
+    target: "800ms"
+    constraint_level: hard
+    measurement_method: "k6 load test — p95 over a sustained 10-minute run"
+    scale_trigger: "p95 TTFB exceeds 800ms over any 10-minute window"
+    applies_when: "has_backend: true"
+    notes: >
+      TTFB is the first signal of backend health visible to the user.
+      800ms at p95 is achievable for most database-backed routes without
+      caching. Routes that require multiple database joins, external API calls,
+      or complex computation may need explicit optimisation contracts if they
+      regularly approach this threshold.
+
+  - id: QI-P95
+    aspect: performance
+    statement: "API p95 response time <= 200ms for reads, <= 500ms for writes"
+    target: "200ms reads / 500ms writes"
+    constraint_level: hard
+    measurement_method: "k6 load test — p95 split by HTTP method"
+    scale_trigger: "p95 response exceeds target for 3 consecutive load test runs"
+    applies_when: "has_backend: true"
+    notes: >
+      Read/write split matters: GET responses should be fast (200ms includes
+      DB query + serialisation); POST/PUT/PATCH responses can be slower
+      (validation + writes + events). Measure separately — aggregate p95
+      masks slow writes. If a specific endpoint consistently exceeds 500ms
+      for writes, it needs its own performance contract.
+
+  - id: QI-ERR
+    aspect: reliability
+    statement: "API error rate <= 0.5% over any 5-minute window"
+    target: "0.5%"
+    constraint_level: hard
+    measurement_method: "Prometheus error_rate metric — (5xx / total requests) over 5m"
+    scale_trigger: "Error rate exceeds 0.5% for any 5-minute window"
+    applies_when: "has_backend: true"
+    notes: >
+      5xx errors only — 4xx errors are client errors and do not count toward
+      the error rate SLO. 0.5% at p99 over 5 minutes means roughly 1 in 200
+      server-side requests fails. Below 0.1% is excellent. Above 1% triggers
+      an on-call page. The alert in alerts.yaml fires at this threshold.
+
+# ─────────────────────────────────────────────────────────────────
+# DERIVED BY PRODUCT TYPE
+# Intent Architect adds these when the product type matches.
+# All are soft unless marked hard — Intent Architect confirms with user.
+# ─────────────────────────────────────────────────────────────────
+
+derived_by_type:
+
+  - id_prefix: QI-A11Y
+    aspect: accessibility
+    statement: "All interactive elements meet WCAG 2.1 AA colour contrast and accessible name requirements"
+    target: "WCAG 2.1 AA — 4.5:1 normal text, 3:1 large text"
+    constraint_level: soft
+    measurement_method: "axe-playwright in tests/accessibility/ — run at Sprint 1 completion"
+    scale_trigger: "Any new interactive element fails axe check in CI"
+    applies_when: "has_ui: true"
+    notes: >
+      Soft by default — Intent Architect should promote to hard if the product
+      serves regulated industries (healthcare, government, finance) or explicitly
+      targets users with disabilities. INV-DQ-005 enforces the accessible name
+      requirement at the invariant level regardless of this QI's constraint level.
+
+  - id_prefix: QI-AVAIL
+    aspect: reliability
+    statement: "Service availability >= 99.5% measured monthly"
+    target: "99.5% monthly uptime"
+    constraint_level: soft
+    measurement_method: "Uptime monitoring — external synthetic checks every 60 seconds"
+    scale_trigger: "Monthly availability falls below 99.5%"
+    applies_when: "has_backend: true"
+    notes: >
+      99.5% monthly allows ~3.6 hours of downtime per month. Promote to hard
+      (99.9% — ~44 minutes/month) for products with paid SLAs or enterprise
+      customers. The runbook docs/runbooks/api-down.md must define the response
+      procedure before this becomes meaningful.
+
+  - id_prefix: QI-COV
+    aspect: maintainability
+    statement: "Test coverage >= 80% per module — no module at 0%"
+    target: "80% per-module coverage"
+    constraint_level: soft
+    measurement_method: "[test_runner] --coverage — module-level, not aggregate"
+    scale_trigger: "Any module falls below 80% or any module reaches 0%"
+    applies_when: "always"
+    notes: >
+      Module-level enforcement matters more than aggregate. An aggregate of 85%
+      can hide a critical module at 0%. INV-Q-COVERAGE is only generated when
+      this QI is confirmed and has an explicit coverage target. If the user sets
+      a different target (e.g. 70%, 90%), update the target field accordingly.
+
+  - id_prefix: QI-COLD
+    aspect: performance
+    statement: "Application cold start <= 2 seconds to first paint"
+    target: "2000ms"
+    constraint_level: soft
+    measurement_method: "Manual timing — process start to first renderer paint in dev build"
+    scale_trigger: "Cold start exceeds 2 seconds on median development hardware"
+    applies_when: "product_type: Desktop app"
+    notes: >
+      Electron and Tauri apps feel sluggish if cold start exceeds 2 seconds.
+      This is measured in development — production builds are faster due to
+      pre-bundling. The Vite renderer start time dominates; keep renderer
+      entry point lean.
+
+  - id_prefix: QI-OFFLINE
+    aspect: reliability
+    statement: "Core product functionality available without network connection"
+    target: "Primary journey completable offline — data syncs on reconnect"
+    constraint_level: soft
+    measurement_method: "Playwright test with network offline — run primary journey"
+    scale_trigger: "Any primary journey screen fails to load in offline mode"
+    applies_when: "product_type: Mobile-first PWA"
+    notes: >
+      Defines which capabilities work offline. At minimum: the cached shell loads,
+      the user can read previously fetched data, and writes queue for sync.
+      Promote to hard if the product's core value proposition requires offline use.
+
+  - id_prefix: QI-INSTALL
+    aspect: reliability
+    statement: "Extension installs and initialises without errors on first load"
+    target: "Zero console errors on first install — storage and permissions initialised"
+    constraint_level: hard
+    measurement_method: "Playwright extension test — install from dist/, open popup, check console"
+    scale_trigger: "Any console error on first install or storage init failure"
+    applies_when: "product_type: Chrome extension"
+    notes: >
+      Chrome extensions get one chance at a first impression. Errors on install
+      cause immediate uninstall. This is hard by default — a broken install is a
+      broken product.
+
+  - id_prefix: QI-CLI-STARTUP
+    aspect: performance
+    statement: "CLI binary starts and outputs --help in under 300ms"
+    target: "300ms"
+    constraint_level: soft
+    measurement_method: "time [binary] --help — measured on median developer hardware"
+    scale_trigger: "Startup time exceeds 300ms on 3 consecutive measurements"
+    applies_when: "product_type: CLI tool"
+    notes: >
+      Slow CLI startup is one of the most common developer complaints. 300ms
+      is the threshold where latency becomes perceptible. Import cost is the
+      primary cause in Node.js CLIs — lazy-load heavy dependencies.
+
+# ─────────────────────────────────────────────────────────────────
+# REGULATORY — DERIVED FROM REGULATORY EXPOSURE
+# Intent Architect adds these when regulatory_exposure matches.
+# All are hard — regulatory requirements are not negotiable.
+# ─────────────────────────────────────────────────────────────────
+
+regulatory:
+
+  - regulation: GDPR
+    applies_when: "regulatory_exposure: GDPR"
+    detection_signals:
+      - "Stores user name, email, or any personally identifiable information"
+      - "Tracks user behaviour or location"
+      - "Serves users in the European Economic Area"
+    quality_intents:
+      - id_prefix: QI-GDPR-DEL
+        aspect: compliance
+        statement: "User data deletion completes within 30 days of request"
+        target: "30 days"
+        constraint_level: hard
+        measurement_method: "Manual audit — deletion request log reviewed quarterly"
+        scale_trigger: "Any deletion request exceeds 30 days without completion"
+        notes: >
+          GDPR Article 17 (right to erasure). Every SENSITIVE entity must have a
+          deletion contract. The data lifecycle section of Outcome Resolver Phase 3
+          defines the cascade rules. Deletion contracts are mandatory — they cannot
+          be deferred.
+
+      - id_prefix: QI-GDPR-EXP
+        aspect: compliance
+        statement: "Data retention periods are finite and enforced — no indefinite storage"
+        target: "All SENSITIVE fields have documented retention period and automated purge"
+        constraint_level: hard
+        measurement_method: "Code review — retention policy applied to every SENSITIVE entity"
+        scale_trigger: "Any SENSITIVE entity lacking a retention period or automated purge"
+        notes: >
+          GDPR requires data be kept no longer than necessary. "Indefinite" is never
+          an acceptable retention period. Outcome Resolver Phase 3 enforces this
+          during data lifecycle derivation.
+
+      - id_prefix: QI-GDPR-CONSENT
+        aspect: compliance
+        statement: "User consent is collected, stored, and revocable before any data processing begins"
+        target: "Consent recorded with timestamp and version — revocation propagates within 24 hours"
+        constraint_level: hard
+        measurement_method: "Functional contract test — consent flow and revocation path"
+        scale_trigger: "Consent revocation not propagated within 24 hours"
+        notes: >
+          GDPR Article 7. Consent must be specific, informed, and freely given.
+          Pre-ticked boxes are not valid consent. Consent withdrawal must be as
+          easy as giving it.
+
+  - regulation: HIPAA
+    applies_when: "regulatory_exposure: HIPAA"
+    detection_signals:
+      - "Stores, processes, or transmits patient health information"
+      - "Serves healthcare providers, insurers, or their business associates"
+      - "Handles electronic Protected Health Information (ePHI)"
+    quality_intents:
+      - id_prefix: QI-HIPAA-PHI
+        aspect: compliance
+        statement: "All ePHI encrypted at rest (AES-256) and in transit (TLS 1.2+)"
+        target: "AES-256 at rest, TLS 1.2+ in transit — verified in every deployment"
+        constraint_level: hard
+        measurement_method: "Infrastructure audit — encryption confirmed in deployment config"
+        scale_trigger: "Any ePHI stored or transmitted without required encryption"
+        notes: >
+          HIPAA Security Rule — Technical Safeguards. This is an infrastructure
+          requirement as much as a code requirement. The deployment config must
+          enforce encryption — it cannot be left to individual developers.
+
+      - id_prefix: QI-HIPAA-AUDIT
+        aspect: compliance
+        statement: "All access to ePHI produces an immutable audit log entry"
+        target: "Every read, write, and deletion of ePHI logged with user ID, timestamp, action"
+        constraint_level: hard
+        measurement_method: "Contract test — ePHI access produces audit log entry"
+        scale_trigger: "Any ePHI access without corresponding audit log entry"
+        notes: >
+          HIPAA Security Rule — Audit Controls. The audit log must be immutable —
+          append-only. gadp_append_audit.py satisfies this for GADP files. A
+          separate ePHI access log is needed for application-level access.
+
+      - id_prefix: QI-HIPAA-MIN
+        aspect: compliance
+        statement: "Minimum necessary standard enforced — users access only the ePHI required for their role"
+        target: "RBAC enforced at row level — no bulk ePHI export without documented justification"
+        constraint_level: hard
+        measurement_method: "RBAC contract tests — role access verified for all ePHI endpoints"
+        scale_trigger: "Any role with unrestricted ePHI access or bulk export without controls"
+        notes: >
+          HIPAA Privacy Rule — Minimum Necessary. This maps directly to row-level
+          security (RLS) on SENSITIVE entities in the data model. Outcome Resolver
+          Phase 3 flags ePHI entities as RLS REQUIRED.
+
+  - regulation: PCI-DSS
+    applies_when: "regulatory_exposure: PCI-DSS"
+    detection_signals:
+      - "Processes, stores, or transmits payment card data"
+      - "Integrates with payment processors (Stripe, Braintree, etc.)"
+    quality_intents:
+      - id_prefix: QI-PCI-SCOPE
+        aspect: compliance
+        statement: "Cardholder data never touches application servers — tokenisation used throughout"
+        target: "Zero cardholder data in logs, databases, or application memory"
+        constraint_level: hard
+        measurement_method: "Code review — no card numbers in application code or storage"
+        scale_trigger: "Any cardholder data present in application logs, DB, or source"
+        notes: >
+          PCI-DSS scope reduction is the primary goal. Using a payment processor's
+          hosted fields or Stripe Elements keeps card data entirely out of the
+          application. If the product stores card data directly, full PCI-DSS
+          compliance scope applies and a QSA assessment is required.
+
+      - id_prefix: QI-PCI-TLS
+        aspect: compliance
+        statement: "All payment-related communication uses TLS 1.2 or higher"
+        target: "TLS 1.2+ enforced — TLS 1.0 and 1.1 disabled"
+        constraint_level: hard
+        measurement_method: "SSL Labs test or equivalent — run against production endpoint"
+        scale_trigger: "Any payment endpoint accessible over TLS 1.0 or 1.1"
+        notes: >
+          PCI-DSS 4.0 Requirement 6.4.1. TLS 1.0 and 1.1 are prohibited.
+          Check hosting platform defaults — some CDNs still negotiate TLS 1.0
+          unless explicitly disabled.
+
+  - regulation: SOC2
+    applies_when: "regulatory_exposure: SOC2"
+    detection_signals:
+      - "B2B product explicitly claiming SOC 2 compliance to enterprise customers"
+      - "Processes customer data under enterprise data processing agreements"
+    quality_intents:
+      - id_prefix: QI-SOC2-CC
+        aspect: compliance
+        statement: "Change management process documented — all deployments logged and reviewed"
+        target: "Every deployment tracked in audit log with deployer identity and timestamp"
+        constraint_level: hard
+        measurement_method: "CI/CD audit — deploy events recorded in audit-log.yaml"
+        scale_trigger: "Any deployment without corresponding audit log entry"
+        notes: >
+          SOC 2 CC8.1 — Change Management. GADP's audit log and /approve-deploy-prod
+          gate partially satisfy this. A formal change management policy document
+          is also required for the Type II audit.
+
+      - id_prefix: QI-SOC2-ACCESS
+        aspect: compliance
+        statement: "Access to production systems is logged, reviewed quarterly, and revoked on role change"
+        target: "Quarterly access review documented — no stale accounts with production access"
+        constraint_level: hard
+        measurement_method: "Manual audit — production access list reviewed quarterly"
+        scale_trigger: "Any account with production access not reviewed in the past 90 days"
+        notes: >
+          SOC 2 CC6.2 — Logical Access. This is an operational control as much
+          as a code control. The development team must establish the review cadence
+          before pursuing SOC 2 Type II certification.
+
+# ─────────────────────────────────────────────────────────────────
+# REGULATORY EXPOSURE DETECTION
+# Used by Intent Architect to classify regulatory_exposure.
+# First match wins.
+# ─────────────────────────────────────────────────────────────────
+
+regulatory_exposure_detection:
+
+  - exposure: HIPAA
+    priority: 1
+    signals:
+      - "Stores, processes, or transmits patient health information (ePHI)"
+      - "Serves healthcare providers, clinics, hospitals, or insurers"
+      - "Handles medical records, diagnoses, prescriptions, or lab results"
+    note: >
+      HIPAA takes precedence over GDPR when both apply — a healthcare product
+      serving EU patients must satisfy both, but HIPAA requirements are stricter
+      and should drive architectural decisions. Record both in regulatory_exposure
+      as an array if both apply.
+
+  - exposure: PCI-DSS
+    priority: 2
+    signals:
+      - "Processes payment card numbers, CVV codes, or magnetic stripe data"
+      - "Integrates with a payment processor for direct card charging"
+    note: >
+      If the product uses Stripe, Braintree, or similar via hosted fields only
+      (card data never reaches the application), PCI-DSS scope is minimised but
+      not eliminated. Record exposure as PCI-DSS and note the scope reduction
+      in the QI-PCI-SCOPE entry.
+
+  - exposure: SOC2
+    priority: 3
+    signals:
+      - "Enterprise B2B product explicitly offering SOC 2 compliance guarantees"
+      - "Processes data under customer data processing agreements (DPAs)"
+      - "Requires security questionnaire responses for enterprise sales"
+    note: >
+      SOC 2 is a commitment to an audit process, not a specific technical
+      requirement. The quality intents here establish the controls that the
+      audit will verify. Full SOC 2 Type II requires a third-party auditor.
+
+  - exposure: GDPR
+    priority: 4
+    signals:
+      - "Stores user name, email address, or any other personally identifiable information"
+      - "Tracks user behaviour, location, or preferences"
+      - "Serves users located in the European Economic Area (EEA)"
+      - "Transfers personal data outside the EEA"
+    note: >
+      GDPR applies to any product that processes personal data of EEA residents,
+      regardless of where the product is hosted. If unsure whether EEA users will
+      use the product: assume GDPR applies. The cost of GDPR compliance is lower
+      than the cost of a breach fine.
+
+  - exposure: none
+    priority: 5
+    signals:
+      - "No user PII stored or processed"
+      - "No payment data"
+      - "No healthcare data"
+      - "No enterprise B2B compliance claims"
+    note: >
+      Products with no regulatory exposure still benefit from privacy-by-design
+      practices. Even without a regulatory requirement, avoid storing data that
+      is not necessary for the product's function.
