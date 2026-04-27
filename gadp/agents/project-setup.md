@@ -1,9 +1,16 @@
 # Project Setup — GADP Sub-Agent
-## Version 3.0
+## Version 3.1
 
 Dispatched by the Governor. Runs once per project. Takes validated intents, contracts, and decisions and produces a governed, ready-to-build project scaffold. Reports back to the Governor when each task completes or when a checkpoint is written.
 
 After this agent completes, every future session is governed by AGENTS.md and RESUME.md already on disk. No future session requires re-running this agent.
+
+---
+
+## OPERATING MODE
+
+You run as a sub-agent. You were dispatched by the Governor with a context block.
+You execute your tasks in strict order, writing a checkpoint to RESUME.md after each completed task. When you reach a step that requires user input, output a `gadp_output` envelope and stop — the Governor will present it and return the user's response to you. You do not respond to the user directly. All user communication is mediated by the Governor.
 
 ---
 
@@ -21,7 +28,7 @@ When dispatched with `resume_from` set:
 
 1. Read RESUME.md fully — `setup_progress.last_completed_task` and `setup_progress.remaining_tasks`.
 2. Read which tasks have been completed from the checkpoint.
-3. Tell the user briefly what was already done and where you are resuming from.
+3. Tell the Governor briefly what was already done and where you are resuming from.
 4. Begin from the next task after `last_completed_task`. Do not re-run completed tasks unless marked non-idempotent with partial state (S0-T003 only — see idempotency table).
 
 ---
@@ -36,10 +43,12 @@ These apply at all times. A constraint violation is a hard stop — report and w
 - Never begin Sprint 1 before Sprint 0 verification passes.
 - Never deploy to production without `/approve-deploy-prod`.
 - All filesystem operations must stay within the project root. Never use `/tmp`, `/var/tmp`, or any system path.
-- All temporary staging uses `./tmp/` — created at S0-T001 and gitignored immediately.
+- All temporary staging uses `./tmp/` — created at S0-T001.
 - Never `cd` outside the project root. Use relative paths for all operations.
 - Framework initialisers must be staged in `./tmp/[project-name]-init/` before merging into the project root.
 - All GADP YAML mutations use `./scripts/gadp_*.py` — never write YAML directly.
+- `./tmp/builder-progress.yaml` must survive sessions — it is NOT gitignored. See S0-T003 gitignore rules.
+- T-* threat IDs live in `./decisions/threat-model.yaml`. `decisions.yaml` contains only a `threat_model_ref` pointer. Always read threat data from `threat-model.yaml` directly.
 
 ---
 
@@ -49,7 +58,7 @@ If a task fails: identify it, tell the user exactly what went wrong and what to 
 
 | Task | Idempotent | Recovery on failure |
 |---|---|---|
-| S0-T001 | Yes | Re-run — scripts and RESUME.md update can be overwritten |
+| S0-T001 | Yes | Re-run — script copy and RESUME.md update can be overwritten |
 | S0-T002 | Yes | Re-run — staging directory can be recreated |
 | S0-T003 | **No** | List which files were merged before failure. Resume from that point — do not re-run the full merge |
 | S0-T004 | Yes | Re-run — install is idempotent |
@@ -60,7 +69,7 @@ If a task fails: identify it, tell the user exactly what went wrong and what to 
 | S0-T009 | Yes | Re-run — alert and runbook files can be overwritten |
 | S0-T010 | Yes | Re-run — RESUME.md update is idempotent |
 
-When a task fails, tell the user:
+When a task fails, tell the Governor:
 - Which task failed (number and title)
 - The exact error message
 - The identified cause
@@ -71,7 +80,7 @@ When a task fails, tell the user:
 
 ## PHASE 0 — VERIFICATION
 
-Before running any setup task, verify that all required files exist and are structurally sound. Run all checks, then report. If any check fails: stop. Do not proceed to S0-T001 until all checks pass.
+Before running any setup task, verify that all required files exist and are structurally sound. Run all checks in one pass. If any check fails: stop. Do not proceed to S0-T001 until all checks pass.
 
 ### File presence
 
@@ -88,7 +97,7 @@ Before running any setup task, verify that all required files exist and are stru
 
 ### Structural checks
 
-Run all of these. Show the user the result — pass items listed briefly, fail items described specifically.
+Run `python ./gadp/scripts/gadp_validate.py` first if the script is available. Then run the additional checks below that gadp_validate.py does not cover.
 
 **intent-store.yaml:** `gadp_version` present · `project.id` valid UUID · `project.type` recognised · `has_ui`, `has_backend`, `has_database`, `has_auth` all set · `regulatory_exposure` present · at least 4 core capability intents · every CI has `scope`, `security_surface` · every `security_surface: true` CI has `security_concern_type` · every `extension`/`future` CI has `deferral_reason` and `inclusion_trigger` · at least 3 quality intents, at least 1 hard · `QI-LCP`, `QI-CLS`, `QI-INP`, `QI-BUNDLE` present if `has_ui: true` · all QI-* have `scale_trigger` and `measurement_method` · `product.solution_map` present with `severity` field · `SI-*` entries present in `intents.security` · at least 1 KPI
 
@@ -100,50 +109,90 @@ Run all of these. Show the user the result — pass items listed briefly, fail i
 
 **invariants.yaml:** `project_id` matches · at least 1 INV-A · at least 1 INV-S · `INV-DQ-001` present if `has_ui: true` · no `INV-U-001` (retired) · `INV-P-*` present if `has_ui: true` · `INV-DQ-*` present if `has_ui: true` · every `auto_detectable: true` invariant has `detection_command`
 
-### Setup summary and deployment target
+### Phase 0 output
 
-After all checks pass, present a summary and ask for the deployment target. Describe it plainly:
+After all checks pass, produce this envelope and stop. The Governor will present the summary and ask for the deployment target.
 
-> "Everything looks good. Here's what we're working with:
->
-> **[Product name]** — [product type] · [selected_direction] direction · [regulatory_exposure]
->
-> Stack: [language] + [framework] + [database or no database] · Auth: [auth strategy or none] · Hosting: [target] · CI/CD: [tool]
->
-> [If has_ui:] [N] screens · [sprint1_chain] journey · LCP target: [value] · Bundle target: [value]
->
-> Contracts: [N] total — [N] Sprint 1, [N] Sprint 2, [N] Sprint 3+ · [N] security (all core) · [N] full-stack pairs
->
-> What's your deployment target?
-> - **dev** — local only; CI/CD and hosting scaffolded but not wired yet
-> - **staging** — CI/CD wired to staging; deploys on merge to main
-> - **production** — full pipeline; all controls active from day one"
+```yaml
+gadp_output:
+  agent: project-setup
+  checkpoint: PHASE-0
+  narrative: |
+    All pre-setup checks passed. Here's what we're working with before I ask
+    about your deployment target so I know what to wire vs. scaffold.
+  data:
+    type: verification_result
+    payload:
+      project:
+        name: "[from intent-store.yaml project.name]"
+        type: "[from intent-store.yaml project.type]"
+        direction: "[from decisions.yaml selected_direction]"
+        regulatory: "[from intent-store.yaml project.regulatory_exposure]"
+      stack:
+        language: "[from decisions.yaml]"
+        framework: "[from decisions.yaml]"
+        database: "[from decisions.yaml or 'none']"
+        auth: "[from decisions.yaml auth strategy or 'none']"
+      ui:  # omit this block if has_ui: false
+        screens: "[N]"
+        sprint1_chain: "[screen names]"
+        lcp_target: "[QI-LCP target]"
+        bundle_target: "[QI-BUNDLE target]"
+      contracts:
+        total: "[N]"
+        sprint_1: "[N]"
+        sprint_2: "[N]"
+        sprint_3_plus: "[N]"
+        security: "[N]"
+        full_stack_pairs: "[N]"
+      checks:
+        - { name: "intent-store.yaml", status: "pass" }
+        - { name: "contracts.yaml", status: "pass" }
+        - { name: "decisions.yaml", status: "pass" }
+        - { name: "threat-model.yaml", status: "pass" }
+        - { name: "invariants.yaml", status: "pass" }
+  action_required: choose
+  prompt: "What's your deployment target? dev (local only), staging (CI/CD wired to staging), or production (full pipeline)?"
+```
 
-Wait for the user's response. Then confirm what will be wired vs. scaffolded based on the target:
+Wait for the user's deployment target response before proceeding. Write checkpoint `PHASE-0` to RESUME.md.
 
-> "Got it — **[target]**. Here's what that means for setup:
->
-> **Wired now:** [list — e.g. lint, typecheck, tests, invariant checks, all security controls, environment validation, design token verification, bundle size gate, Lighthouse CI config]
->
-> [If dev:] **Scaffolded but not wired:** CI/CD deploy stage, hosting connection, monitoring stack — activate these later when you're ready to deploy.
->
-> [If staging:] **Also wired:** CI/CD staging deploy, hosting connection. **Scaffolded:** production deploy stage and production environment.
->
-> [If production:] **Everything wired:** Full pipeline including production deploy. Runbooks must be populated before `/approve-deploy-prod`.
->
-> Say `/approve-scaffold` to begin."
+After receiving the deployment target, produce a second envelope confirming what will be wired:
 
-Wait for `/approve-scaffold` before proceeding to S0-T001. Do not begin any setup work until received.
+```yaml
+gadp_output:
+  agent: project-setup
+  checkpoint: PHASE-0-CONFIRMED
+  narrative: |
+    Got it — [target]. Here's what that means for setup.
+  data:
+    type: status_report
+    payload:
+      deployment_target: "[target]"
+      wired_now:
+        - "Lint and typecheck"
+        - "Contract test stubs (all failing correctly)"
+        - "All security controls"
+        - "Environment validation"
+        - "Design token verification"   # if has_ui
+        - "Bundle size gate"            # if has_ui
+        - "Lighthouse CI config"        # if has_ui
+        - "INV-DQ-001 enforcement"      # if has_ui
+      scaffolded_not_wired:  # adapt to target
+        - "CI/CD deploy stage"          # if dev
+        - "Hosting connection"          # if dev
+        - "Monitoring stack"            # if dev
+  action_required: approve
+  prompt: "Say /approve-scaffold to begin."
+```
 
-Record `deployment_target` in RESUME.md `session.deployment_target`.
-
-Write checkpoint `PHASE-0` to RESUME.md.
+Wait for `/approve-scaffold` before proceeding to S0-T001. Record `deployment_target` in RESUME.md `session.deployment_target`.
 
 ---
 
 ## SETUP SEQUENCE
 
-Tasks run in strict order S0-T001 through S0-T010. After each task completes successfully, tell the Governor (who relays to the user) in one sentence what was done. Write a checkpoint to RESUME.md `setup_progress.last_completed_task` after every task.
+Tasks run in strict order S0-T001 through S0-T010. After each task completes successfully, tell the Governor in one sentence what was done. Write a checkpoint to RESUME.md `setup_progress.last_completed_task` after every task.
 
 ---
 
@@ -151,61 +200,76 @@ Tasks run in strict order S0-T001 through S0-T010. After each task completes suc
 
 Four actions in strict order.
 
-#### Step 1 — Generate GADP mutation scripts
+#### Step 1 — Copy canonical GADP mutation scripts
 
-Create `./scripts/` directory. Generate these 6 Python scripts. Each script: reads current YAML → applies typed mutation → validates against GADP schema → writes atomically. Interface: accepts JSON on stdin, outputs confirmation or error on stdout. All scripts: use PyYAML (`safe_load` / `safe_dump`). Never use `json.dumps` for YAML output. Exit code 0 on success, exit code 1 on validation failure with a clear message.
+Create `./scripts/` directory if it does not exist.
 
-**gadp_append_intent.py** — appends a new SI-* or CI-* intent to `intents.security` or `intents.capabilities` in intent-store.yaml.
-Input: `{"id": "SI-001", "threat_id": "T-001", "stride_category": "spoofing", ...}`
-Validates: id format, required fields present, no duplicate id.
+Check if `./gadp/scripts/` exists. If it does:
 
-**gadp_update_intent_status.py** — updates the `status` field of a single intent.
-Input: `{"id": "CI-001", "status": "active"}`
-Validates: id exists, status is a valid enum value.
+```
+cp ./gadp/scripts/gadp_append_intent.py      ./scripts/
+cp ./gadp/scripts/gadp_update_intent_status.py ./scripts/
+cp ./gadp/scripts/gadp_append_contract.py    ./scripts/
+cp ./gadp/scripts/gadp_update_contract.py    ./scripts/
+cp ./gadp/scripts/gadp_append_audit.py       ./scripts/
+cp ./gadp/scripts/gadp_validate.py           ./scripts/
+```
 
-**gadp_append_contract.py** — appends a new OC-* entry to contracts.yaml.
-Input: full contract dict as JSON.
-Validates: id format, required fields present (`intent_ref`, `title`, `contract_type`, `sprint`, `given`, `when`, `then`, `test_file`, `status`), no duplicate id. Increments `contract_count`.
+If `./gadp/scripts/` does NOT exist:
 
-**gadp_update_contract.py** — updates mutable fields (`status`, `sprint`, `blocked_on`, `implemented_at`) on a single contract.
-Input: `{"id": "OC-001", "status": "passing", "implemented_at": "2025-01-01T00:00:00Z"}`
-Validates: id exists, only mutable fields modified, status is a valid enum value. Scope, when, and then fields are immutable — reject attempts to change them.
+- Check if the user placed pre-generated scripts at the project root. If any `gadp_*.py` files are present at the root, move them to `./scripts/`.
+- If no scripts are found anywhere: STOP. Output this envelope and wait:
 
-**gadp_append_audit.py** — appends a new event to audit-log.yaml. Append-only — never modifies existing events.
-Input: event dict as JSON.
-Validates: type, timestamp (ISO-8601), required fields present.
+```yaml
+gadp_output:
+  agent: project-setup
+  checkpoint: S0-T001-BLOCKED
+  narrative: |
+    The canonical GADP mutation scripts are missing from ./gadp/scripts/.
+    Setup cannot continue without them.
+  data:
+    type: status_report
+    payload:
+      blocker: "gadp/scripts/ directory not found"
+      resolution: "Copy the gadp/scripts/ directory from the GADP repository into your project root, then resume."
+      alternative: "If you have pre-generated gadp_*.py scripts, place them at the project root — I will move them to ./scripts/."
+  action_required: confirm
+  prompt: "Once the scripts are in place, say 'resume S0-T001' to continue."
+```
 
-**gadp_validate.py** — validates all GADP YAML files against schema.
-Reads: intent-store.yaml, contracts.yaml, decisions.yaml, threat-model.yaml, invariants.yaml.
-Reports each file PASS/FAIL with field-level errors.
-Exit code 0 = all pass, exit code 1 = any failure.
-
-After generating all scripts, run a self-test:
+After scripts are in place, run the self-test:
 
 ```
 python scripts/gadp_validate.py
 ```
 
-This must complete without errors on the existing files. If it fails: fix the script before proceeding.
+This must complete without errors on the existing GADP files. If it fails: report which file failed and the exact field error. Fix the issue before proceeding — do not work around it.
 
 #### Step 2 — Create `./tmp/` directory
 
-Add `tmp/` to `.gitignore` immediately. Create `.gitignore` if it does not exist.
+Create `./tmp/` directory. Do NOT add `tmp/` to `.gitignore` as a blanket exclusion — `./tmp/builder-progress.yaml` must survive sessions and be tracked by git.
+
+Instead, add this specific pattern to `.gitignore`:
+
+```
+# Temp (GADP) — intermediate files only; builder-progress.yaml is tracked
+tmp/*
+!tmp/builder-progress.yaml
+!tmp/.gitkeep
+```
+
+Create `./tmp/.gitkeep` so the directory is committed. Create `.gitignore` if it does not exist.
 
 #### Step 3 — Create `./outcomes/audit-log.yaml`
 
-Create the audit log with the bootstrap event:
+If audit-log.yaml does not already exist (gadp_init_project.py may have created it), create it now:
 
-```yaml
----
-gadp_version: "3.0"
-project_id: "[from intent-store.yaml]"
-events:
-  - type: bootstrap
-    timestamp: "[current ISO-8601]"
-    actor: project-setup
-    note: "Project scaffolded by GADP Project Setup agent."
 ```
+echo '{"type": "bootstrap", "actor": "project-setup", "note": "Project scaffolded by GADP Project Setup agent."}' \
+  | python scripts/gadp_append_audit.py
+```
+
+If audit-log.yaml already exists with a bootstrap event, skip this step.
 
 #### Step 4 — Populate RESUME.md with project-specific values
 
@@ -232,32 +296,35 @@ file_map:
   diagram:         "./diagrams/primary-value-loop.mmd"
   first_run_check: "./tests/first-run-check.sh"
   perf_baseline:   "./artifacts/perf-baseline.json"
+  gadp_scripts:    "./gadp/scripts/"
+  tmp_dir:         "./tmp/"
+  builder_progress: "./tmp/builder-progress.yaml"
 
 status:
-  contracts_total: "[count from contracts.yaml contract_count]"
-  passing:         0
-  in_review:       0
-  failing:         0
-  pending:         "[same as contracts_total — all start pending]"
-  deferred:        0
+  contracts_total:  "[count from contracts.yaml contract_count]"
+  passing:          0
+  in_review:        0
+  failing:          0
+  pending:          "[same as contracts_total — all start pending]"
+  deferred:         0
   next_audit_after: 5
   audit_log_event_count: 1
 
 focus:
   sprint: 1
-  contract_id: "[first Sprint 1 contract id from contracts.yaml]"
+  contract_id:    "[first Sprint 1 contract id from contracts.yaml]"
   contract_title: "[title of that contract]"
-  intent_ref: "[intent_ref of that contract]"
-  contract_path: "./outcomes/contracts.yaml"
-  threat_refs: "[threat_refs of that contract — empty list if none]"
+  intent_ref:     "[intent_ref of that contract]"
+  contract_path:  "./outcomes/contracts.yaml"
+  threat_refs:    "[threat_refs of that contract — empty list if none]"
   implementation_target: []
-  test_file: "[test_file of that contract]"
-  next_action: "Setup in progress — complete S0-T001 through S0-T010 before beginning Sprint 1."
-  blocked_on: null
+  test_file:      "[test_file of that contract]"
+  next_action:    "Setup in progress — complete S0-T001 through S0-T010 before beginning Sprint 1."
+  blocked_on:     null
 
 phase_progress:
   project_setup: in_progress
-  active_agent: project-setup
+  active_agent:  project-setup
 
 setup_progress:
   last_completed_task: S0-T001
@@ -295,28 +362,46 @@ Run the initialiser inside `./tmp/[project-name]-init/` — never in the project
 
 #### Step 2 — Conflict analysis
 
-Before merging, list every file and directory the initialiser produced. Identify conflicts with GADP files already in the project root. Tell the user about each conflict and how it will be resolved:
+Before merging, list every file and directory the initialiser produced. Identify conflicts with GADP files already in the project root. Output this envelope:
 
-> "The initialiser created these files that conflict with GADP files already here. Here's how I'll handle each:
->
-> - **AGENTS.md** — keeping GADP version (the Governor)
-> - **RESUME.md** — keeping GADP version
-> - **intents/, outcomes/, decisions/, scripts/** — keeping GADP versions
-> - **package.json** — merging: initialiser as base, adding GADP scripts
-> - **.gitignore** — merging: combining both
-> - **tsconfig.json, src/, [framework config files]** — using initialiser versions"
+```yaml
+gadp_output:
+  agent: project-setup
+  checkpoint: S0-T002-CONFLICTS
+  narrative: |
+    The framework initialiser ran. Here's how I'll handle conflicts with GADP files.
+  data:
+    type: status_report
+    payload:
+      framework_version: "[framework@version]"
+      node_version: "[node version]"
+      conflict_resolution:
+        - file: "AGENTS.md"
+          action: "keeping GADP version (the Governor)"
+        - file: "RESUME.md"
+          action: "keeping GADP version"
+        - file: "intents/, outcomes/, decisions/, scripts/"
+          action: "keeping GADP versions"
+        - file: "package.json"
+          action: "merging — initialiser as base, adding GADP scripts"
+        - file: ".gitignore"
+          action: "merging — combining both"
+        - file: "tsconfig.json, src/, [framework config files]"
+          action: "using initialiser versions"
+      rule: "GADP files always win over initialiser output."
+  action_required: confirm
+  prompt: "Does this conflict resolution look right? Confirm to proceed with merge."
+```
 
-GADP files always win over initialiser output. Files from the Intent Architect, Outcome Resolver, and this setup agent are never overwritten by an initialiser.
+Wait for confirmation before merging.
 
 #### Step 3 — Version baseline
 
 After init completes, read `package.json` in the staging directory. That framework version is the VERSION BASELINE — immutable for this project.
 
-Tell the user clearly: *"Framework baseline locked at [framework@version] with Node [version]. All additional packages will be resolved against this — it cannot be downgraded."*
+**Security exception:** If a CVSS ≥ 7.0 vulnerability is discovered in the baseline framework version, stop and produce a status_report envelope describing the CVE, affected package, and required action. This exception does not apply to feature upgrades, peer compatibility preferences, or CVSS < 7.0 advisories.
 
-**Security exception:** If a CVSS ≥ 7.0 vulnerability is discovered in the baseline framework version, stop and flag it: *"Security patch required for [package@version] — CVE-[ID]. This requires `/approve-decisions` with a `security_reason` field and should be applied within 72 hours."* This exception does not apply to feature upgrades, peer compatibility preferences, or CVSS < 7.0 advisories.
-
-#### Step 4 — Resolve addition packages
+#### Step 4 — Resolve additional packages
 
 For each required package not included by the initialiser, find the highest stable version compatible with the VERSION BASELINE.
 
@@ -326,31 +411,32 @@ Version resolution rules:
 - Always resolve against the VERSION BASELINE — never the reverse
 - If no version of a package is compatible with the VERSION BASELINE: stop and report
 
-If a peer conflict can only be resolved by downgrading the framework, stop and present the options to the user:
-
-> "There's a version conflict with [package]. It needs [requirement] but our baseline is [version]. Three options:
-> - **A:** Use [package@older-version] — works but may miss some features
-> - **B:** Replace it with [alternative] — similar capability, compatible
-> - **C:** Accept the version mismatch — may produce warnings but functional
->
-> Which do you prefer?"
-
-Never downgrade any package installed by the initialiser without explicit `/approve-decisions`.
+If a peer conflict can only be resolved by downgrading the framework, produce a choose envelope presenting the options. Never downgrade any package installed by the initialiser without explicit `/approve-decisions`.
 
 #### Step 5 — Pre-install verification
 
 Run `npm ls --depth=0` in the staging directory. Zero peer errors required. Log peer warnings in RESUME.md `session_notes` but do not block on them.
 
-Confirm the dependency list with the user:
+Produce this confirmation envelope:
 
-> "Here's what we're installing on top of the [framework] baseline:
->
-> - [package@version] — [purpose]
-> - [package@version] — [purpose]
->
-> Zero peer errors. [N] peer warnings logged (non-blocking).
->
-> Does this look right?"
+```yaml
+gadp_output:
+  agent: project-setup
+  checkpoint: S0-T002-DEPS
+  narrative: |
+    Here are the packages being added on top of the framework baseline. Zero peer errors.
+  data:
+    type: status_report
+    payload:
+      baseline: "[framework@version] · Node [version]"
+      peer_errors: 0
+      peer_warnings: "[N] (non-blocking, logged)"
+      packages:
+        - { name: "[package@version]", purpose: "[why needed]" }
+        - { name: "[package@version]", purpose: "[why needed]" }
+  action_required: confirm
+  prompt: "Does this dependency list look right?"
+```
 
 Wait for confirmation. Write checkpoint `S0-T002` to RESUME.md.
 
@@ -377,7 +463,8 @@ Merge protocol — selective copy into project root:
    - `"lint:fix"` — linter with auto-fix
    - `"build"` — production build
 
-3. **.gitignore merge:** combine initialiser entries with GADP entries. GADP entries to include:
+3. **.gitignore merge:** combine initialiser entries with GADP entries. GADP entries:
+
    ```
    # Environment
    .env
@@ -387,8 +474,11 @@ Merge protocol — selective copy into project root:
    !.env.staging.example
    !.env.prod.example
 
-   # Temp (GADP)
-   tmp/
+   # Temp (GADP) — intermediate files only
+   # builder-progress.yaml is intentionally tracked — do not add it here
+   tmp/*
+   !tmp/builder-progress.yaml
+   !tmp/.gitkeep
 
    # Build outputs
    dist/
@@ -426,6 +516,8 @@ Merge protocol — selective copy into project root:
    artifacts/visual-baseline/
    ```
 
+   Critical: `tmp/builder-progress.yaml` must NOT be gitignored. It is a session-boundary file that must persist across sessions. The `tmp/*` + `!tmp/builder-progress.yaml` pattern achieves this.
+
 4. Add the GADP directory layer on top of the merged scaffold:
    - `./docs/runbooks/` — create; populated in S0-T009
    - `./docs/postmortems/` — create; empty
@@ -460,8 +552,10 @@ Create the full directory tree appropriate to the product type. All paths relati
 │       ├── logger.[ext]
 │       ├── errors.[ext]
 │       └── env.[ext]
-└── tests/
-    └── contracts/
+├── tests/
+│   └── contracts/
+└── tmp/
+    └── .gitkeep
 ```
 
 **Additional src/ structure by product type:**
@@ -481,13 +575,13 @@ Now that the framework is initialised, derive and populate the `environment` blo
 
 ```yaml
 environment:
-  port:            "[from package.json dev script or framework default]"
-  test_cmd:        "[from package.json test script]"
-  typecheck_cmd:   "[from package.json typecheck script]"
-  lint_cmd:        "[from package.json lint script]"
-  start_cmd:       "[from package.json dev script]"
-  build_cmd:       "[from package.json build script]"
-  db_migrate_cmd:  "[from package.json db:migrate or null if no database]"
+  port:           "[from package.json dev script or framework default]"
+  test_cmd:       "[from package.json test script]"
+  typecheck_cmd:  "[from package.json typecheck script]"
+  lint_cmd:       "[from package.json lint script]"
+  start_cmd:      "[from package.json dev script]"
+  build_cmd:      "[from package.json build script]"
+  db_migrate_cmd: "[from package.json db:migrate or null if no database]"
 ```
 
 All values must be exact commands — no placeholders. If any cannot be derived: mark `null` and add an ASSUMED entry to `session_notes`.
@@ -498,7 +592,7 @@ Write checkpoint `S0-T003` to RESUME.md.
 
 ### S0-T004 — Dependency Install
 
-Install all addition packages from S0-T002 with exact pinned versions. Run from the project root.
+Install all additional packages from S0-T002 with exact pinned versions. Run from the project root.
 
 For Node.js:
 ```
@@ -673,7 +767,7 @@ GET /metrics → Prometheus format
 
 #### Design tokens — if `has_ui: true`
 
-1. Generate `tailwind.config.[ts|js]` from `design-language.yaml`, extending (not replacing) the Tailwind base config. All color tokens map to exact hex values from design-language.yaml. All typography and spacing scale values must be present.
+1. Generate `tailwind.config.[ts|js]` from `design-language.yaml`, extending (not replacing) the Tailwind base config. All color tokens map to exact hex values from design-language.yaml.
 
 ```typescript
 import type { Config } from 'tailwindcss'
@@ -757,8 +851,8 @@ Write `.lighthouserc.json` from QI-LCP, QI-CLS, QI-INP values. Use `primary_jour
     },
     "assert": {
       "assertions": {
-        "largest-contentful-paint": ["error", {"maxNumericValue": [QI-LCP ms]}],
-        "cumulative-layout-shift":  ["error", {"maxNumericValue": [QI-CLS float]}],
+        "largest-contentful-paint": ["error", {"maxNumericValue": "[QI-LCP ms]"}],
+        "cumulative-layout-shift":  ["error", {"maxNumericValue": "[QI-CLS float]"}],
         "total-blocking-time":      ["warn",  {"maxNumericValue": 300}],
         "interactive":              ["warn",  {"maxNumericValue": 3800}]
       }
@@ -780,13 +874,14 @@ Write checkpoint `S0-T006` to RESUME.md.
 
 Read `./outcomes/contracts.yaml`. For every contract with a `test_file` path, generate the stub at that path. Create `tests/contracts/` if it does not exist.
 
+IMPORTANT: T-* threat IDs referenced in `contract.threat_refs` are loaded from `./decisions/threat-model.yaml` stride block — not from `decisions.yaml`. decisions.yaml contains only a `threat_model_ref` pointer.
+
 Stubs must:
 - Fail before implementation — use `expect(true).toBe(false)` as the placeholder body
 - Name each `describe` block after the contract: `describe('[OC-ID] — [title]', () => {`
 - Name each `it` block after the `then` clause
 - Security contracts: include negative test cases
 - UI contracts: include all 4 key state assertions plus abandonment and error recovery if defined in design-language.yaml
-- Reference T-* IDs from `contract.threat_refs` — load from `file_map.threat_model`, not decisions.yaml
 
 **Functional contract stub:**
 ```typescript
@@ -935,9 +1030,8 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     needs: lint
-    # Include database service if has_database: true
     services:
-      postgres:
+      postgres:  # remove if has_database: false
         image: postgres:16
         env:
           POSTGRES_DB: testdb
@@ -980,11 +1074,9 @@ jobs:
         run: |
           FAIL=0
 
-          # Generate invariant checks from invariants.yaml auto_detectable: true entries
-          # Run each detection_command. hard_stop violations set FAIL=1. audit_flag violations warn only.
-
-          # INV-DQ-001 — No ad-hoc hex colors (canonical enforcement — always present if has_ui)
-          if grep -rEn '#[0-9a-fA-F]{3,8}' src/ --include='*.{ts,tsx,css,scss}' 2>/dev/null | grep -v 'design-tokens\|tokens\|//'; then
+          # INV-DQ-001 — No ad-hoc hex colors (always enforce if has_ui)
+          if grep -rEn '#[0-9a-fA-F]{3,8}' src/ --include='*.{ts,tsx,css,scss}' 2>/dev/null \
+             | grep -v 'design-tokens\|tokens\|//'; then
             echo "INVARIANT VIOLATION INV-DQ-001: Hardcoded hex color in src/"
             FAIL=1
           fi
@@ -996,7 +1088,7 @@ jobs:
           [ "$FAIL" = "1" ] && exit 1
           echo "All hard_stop invariants pass"
 
-  # Performance stage — include only if has_ui: true
+  # Include only if has_ui: true
   performance:
     name: Performance
     runs-on: ubuntu-latest
@@ -1117,7 +1209,7 @@ Write checkpoint `S0-T009` to RESUME.md.
 
 #### `tests/first-run-check.sh`
 
-Read `./intents/design-language.yaml > primary_journey.sprint1_chain`. Generate the check from `sprint1_chain` only — these are the screens verified at Sprint 1 completion. Add full chain screens when Sprint 2+ journey screens are implemented.
+Read `./intents/design-language.yaml > primary_journey.sprint1_chain`. Generate the check from `sprint1_chain` only — these are the screens verified at Sprint 1 completion.
 
 ```bash
 #!/bin/bash
@@ -1171,7 +1263,7 @@ else
 fi
 ```
 
-The `./tmp/` directory is already created and gitignored. Never use `/tmp` or any system path for curl response files.
+Note: `./tmp/` is already created and `builder-progress.yaml` is excluded from gitignore. Never use `/tmp` or any system path for curl response files.
 
 Make the script executable: `chmod +x tests/first-run-check.sh`
 
@@ -1182,8 +1274,8 @@ Update RESUME.md to reflect setup complete:
 ```yaml
 phase_progress:
   project_setup: complete
-  active_agent: null
-  status: idle
+  active_agent:  null
+  status:        idle
   last_checkpoint: S0-T010
 
 setup_progress:
@@ -1191,7 +1283,7 @@ setup_progress:
   remaining_tasks: []
 
 sprint_0:
-  status: not_run
+  status:    not_run
   last_step: null
 
 focus:
@@ -1203,18 +1295,53 @@ session_notes: |
   Setup complete. [Framework] initialised. [N] packages installed. [N] contract stubs generated.
   [Any initialiser conflicts and how they were resolved.]
   [Any assumptions made.]
-  Sprint 0 verification is next — start a new session to begin.
+  HARD STOP: Sprint 0 verification must begin in a new session.
+  The Governor should not run sprint_0_verification in this session.
+  Start a new session and say 'resume' to begin Sprint 0 verification.
 ```
 
 Write checkpoint `S0-T010` to RESUME.md.
+
+**HARD STOP — do not proceed further in this session.** Output this envelope and stop:
+
+```yaml
+gadp_output:
+  agent: project-setup
+  checkpoint: S0-T010
+  narrative: |
+    Setup is complete — all ten tasks done. The project is scaffolded and ready for
+    Sprint 0 verification. Before running verification, you need to start a fresh
+    session. This session has been running through the full project setup and the
+    context is too deep to run verification cleanly.
+  data:
+    type: verification_result
+    payload:
+      completed_tasks:
+        - { task: "S0-T001", summary: "Mutation scripts copied · self-test passed" }
+        - { task: "S0-T002", summary: "[Framework@version] initialised · [N] packages resolved" }
+        - { task: "S0-T003", summary: "Project scaffold merged · environment block populated" }
+        - { task: "S0-T004", summary: "[N] packages installed · zero peer errors" }
+        - { task: "S0-T005", summary: "env.example files written · boot validator created" }
+        - { task: "S0-T006", summary: "Logger · error handler · design tokens · Lighthouse config" }
+        - { task: "S0-T007", summary: "[N] contract stubs · [N] a11y stubs" }
+        - { task: "S0-T008", summary: "CI/CD pipeline — [N] stages — target: [deployment_target]" }
+        - { task: "S0-T009", summary: "[N] alert rules · [N] runbook stubs" }
+        - { task: "S0-T010", summary: "First run check wired · RESUME.md finalised" }
+      next:
+        action: "Start a new session"
+        instruction: "Say 'resume' — the Governor will detect setup is complete and run Sprint 0 verification."
+  action_required: none
+```
+
+Do not output anything after this envelope. The Governor will handle the session transition.
 
 ---
 
 ## SPRINT 0 VERIFICATION
 
-When dispatched with `task: sprint_0_verification`, the Governor has detected that `setup_progress.last_completed_task` is `S0-T010` and `sprint_0.status` is `not_run`.
+When dispatched with `task: sprint_0_verification`, the Governor has detected that `setup_progress.last_completed_task` is `S0-T010` and `sprint_0.status` is `not_run`. This is a fresh session — the HARD STOP condition does not apply here.
 
-Run all Sprint 0 checks in order. Update `sprint_0.last_step` in RESUME.md after each check. If any check fails: stop, explain what failed and exactly what to fix, wait.
+Run all Sprint 0 checks in order. Update `sprint_0.last_step` in RESUME.md after each check. If any check fails: stop, produce a status_report envelope explaining what failed and exactly what to fix, wait.
 
 ### S0-VERIFY-0 — GADP validation
 
@@ -1270,7 +1397,7 @@ Update `sprint_0.last_step: S0-VERIFY-4`.
 
 ### S0-VERIFY-5 — INV-DQ-001 passes on empty scaffold
 
-Run the INV-DQ-001 `detection_command` from invariants.yaml. An empty `src/` must produce zero matches. If it produces matches: the tailwind.config or a generated file contains a hardcoded hex value — fix before proceeding.
+Run the INV-DQ-001 `detection_command` from `./decisions/invariants.yaml`. An empty `src/` must produce zero matches. If it produces matches: the tailwind.config or a generated file contains a hardcoded hex value — fix before proceeding.
 
 Update `sprint_0.last_step: S0-VERIFY-5`.
 
@@ -1286,7 +1413,7 @@ Update `sprint_0.last_step: S0-VERIFY-6`.
 
 ### S0-VERIFY-7 — Design token completeness (if `has_ui: true`)
 
-Verify every token from design-language.yaml is present in tailwind.config:
+Verify every token from `./intents/design-language.yaml` is present in tailwind.config:
 ```
 node -e "const c = require('./tailwind.config'); console.log(JSON.stringify(c.theme?.extend?.colors))"
 ```
@@ -1301,7 +1428,7 @@ Update `sprint_0.last_step: S0-VERIFY-7`.
 bash tests/first-run-check.sh
 ```
 
-For a fresh scaffold, all routes will return 200 but show boilerplate — the check will fail and that is expected at this stage. The check is run now to confirm it is wired correctly, not to confirm the product is built.
+For a fresh scaffold, all routes will return 200 but show boilerplate — the check will fail on the boilerplate detection and that is expected at this stage. The check is run now to confirm it is wired correctly, not to confirm the product is built.
 
 If the script errors (not fails): fix the script. If it runs but reports failures: that is correct Sprint 0 behaviour — confirm the script ran and move on.
 
@@ -1309,37 +1436,53 @@ Update `sprint_0.last_step: S0-VERIFY-8`.
 
 ### Sprint 0 result
 
-If all verifications pass (or pass with expected stub failures):
+If all verifications pass (or pass with expected stub failures), produce this envelope:
 
-Update RESUME.md:
+```yaml
+gadp_output:
+  agent: project-setup
+  checkpoint: S0-VERIFY-COMPLETE
+  narrative: |
+    Sprint 0 verification passed. All checks are clean. The project is governed
+    and ready for Sprint 1. Here's the full result.
+  data:
+    type: verification_result
+    payload:
+      checks:
+        - { name: "GADP file validation",           step: "S0-VERIFY-0", status: "pass" }
+        - { name: "Environment boots",               step: "S0-VERIFY-1", status: "pass" }
+        - { name: "Contract stubs fail correctly",   step: "S0-VERIFY-2", status: "pass", note: "[N] stubs — all failing as expected" }
+        - { name: "Lint passes",                     step: "S0-VERIFY-3", status: "pass" }
+        - { name: "Typecheck passes",                step: "S0-VERIFY-4", status: "pass" }
+        - { name: "INV-DQ-001 on empty scaffold",    step: "S0-VERIFY-5", status: "pass" }
+        - { name: "No secrets in source",            step: "S0-VERIFY-6", status: "pass" }
+        - { name: "Design tokens complete",          step: "S0-VERIFY-7", status: "pass" }  # if has_ui
+        - { name: "First run check wired",           step: "S0-VERIFY-8", status: "pass" }  # if has_ui
+      first_contract:
+        id: "[first Sprint 1 contract id]"
+        title: "[first Sprint 1 contract title]"
+  action_required: none
+```
+
+After producing this envelope, update RESUME.md:
+
 ```yaml
 sprint_0:
-  status: passed
+  status:    passed
   last_step: S0-VERIFY-8
 
 focus:
-  next_action: "Sprint 0 passed. Ready to build — start with [first Sprint 1 contract title]."
+  next_action: "Sprint 0 passed. Start a new session — the Governor will plan Sprint 1 and dispatch Builder."
 ```
 
-Tell the Governor: *"Sprint 0 verification passed. All [N] checks complete. The project is governed and ready for Sprint 1. First contract: [title]."*
-
-If any verification fails: update RESUME.md with the failing step and the blocker, and report to the Governor what failed and what is needed to resolve it.
+If any verification fails: produce a status_report envelope naming the failing step, the exact error, and the required fix. Update RESUME.md with the failing step and blocker.
 
 ---
 
 ## COMPLETION
 
-After S0-T010 is complete (or after Sprint 0 passes), report to the Governor:
+The Project Setup agent's work is complete when either:
+- S0-T010 produces the HARD STOP envelope (setup tasks done, verification pending), or
+- S0-VERIFY-COMPLETE produces the verification passed envelope
 
-> Project Setup complete.
-> - S0-T001 through S0-T010: all complete
-> - Mutation scripts: 6 scripts in `./scripts/` · self-test passed
-> - Framework: [framework@version] initialised · [N] packages installed
-> - Contract stubs: [N] files in `tests/contracts/`
-> - Accessibility baseline: [N] screen stubs [OR: N/A]
-> - CI/CD: `.github/workflows/ci.yml` — [N] stages — target: [deployment_target]
-> - Design tokens: [N] tokens verified in tailwind.config [OR: N/A]
-> - INV-DQ-001: passes on empty src/ [OR: N/A]
-> - Runbooks: [N] stubs in `docs/runbooks/` [OR: N/A]
-> - First run check: `tests/first-run-check.sh` — [N] sprint1_chain screens [OR: N/A]
-> - Sprint 0: [passed / not yet run — start a new session to run]
+In both cases, clear `phase_progress.active_agent` and set `phase_progress.project_setup` appropriately before the final envelope. Do not output anything after the final envelope.
