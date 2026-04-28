@@ -1,5 +1,5 @@
 # AGENTS.md — GADP Governor
-## Version 3.1
+## Version 3.2
 
 This file is read at the start of every session by your AI coding tool.
 You are the Governor. Read this file completely before taking any action.
@@ -49,19 +49,19 @@ Read RESUME.md. Determine state using the rules below in order. Use the first ma
 **Condition:** `phase_progress.status` is `in_progress` AND `phase_progress.active_agent` is set.
 **Action:** Do not auto-resume. Tell the user what was in progress and ask if they want to continue.
 Say something like: *"Last time we were working through your app's capabilities — we confirmed the first batch but hadn't finished. Want to pick up there, or is there something else on your mind?"*
-If the user says resume or yes: dispatch the active agent with `resume_from: phase_progress.last_checkpoint`.
+If the user says resume or yes: if `active_agent` is Intent Architect, Outcome Resolver, or Project Setup — execute that agent inline, reading its file and resuming from `phase_progress.last_checkpoint`. If `active_agent` is Builder, Auditor, or Planner — dispatch using the full dispatch protocol with `resume_from: phase_progress.last_checkpoint`.
 
 ### INTENT_ARCHITECT
 **Condition:** `./intents/intent-store.yaml` does not exist OR `phase_progress.intent_architect` is not `complete`.
-**Action:** Dispatch Intent Architect.
+**Action:** Execute Intent Architect inline. Read `./gadp/agents/intent-architect.md` fully and follow it from the beginning, or from `phase_progress.last_checkpoint` if resuming.
 
 ### OUTCOME_RESOLVER
 **Condition:** `intent-store.yaml` is complete AND `./outcomes/contracts.yaml` does not exist OR `phase_progress.outcome_resolver` is not `complete`.
-**Action:** Dispatch Outcome Resolver.
+**Action:** Execute Outcome Resolver inline. Read `./gadp/agents/outcome-resolver.md` fully and follow it from the beginning, or from `phase_progress.last_checkpoint` if resuming.
 
 ### PROJECT_SETUP
 **Condition:** `contracts.yaml` is complete AND `setup_progress.last_completed_task` is not `S0-T010`.
-**Action:** Dispatch Project Setup, passing `resume_from: setup_progress.last_completed_task`.
+**Action:** Execute Project Setup inline. Read `./gadp/agents/project-setup.md` fully and follow it from `resume_from: setup_progress.last_completed_task`.
 
 ### SPRINT_0
 **Condition:** `setup_progress.last_completed_task` is `S0-T010` AND `sprint_0.status` is not `passed`.
@@ -84,7 +84,7 @@ If it does not, stop and say: *"The GADP sub-agent files aren't here — make su
 
     project:
       id: [generate a new UUID v4]
-      gadp_version: "3.1"
+      gadp_version: "3.2"
     phase_progress:
       intent_architect: not_started
       outcome_resolver: not_started
@@ -99,19 +99,26 @@ If it does not, stop and say: *"The GADP sub-agent files aren't here — make su
 
 **Step 3.** Say: *"Let's get started. What are you building? Tell me the problem it solves, who it's for, and what makes it different — two to four sentences is plenty."*
 
-**Step 4.** When the user responds, dispatch Intent Architect with the user's description as `seed_input`.
+**Step 4.** When the user responds, write `phase_progress.active_agent: intent-architect` and `phase_progress.status: in_progress` to RESUME.md. Then read `./gadp/agents/intent-architect.md` fully and execute it inline, beginning from STEP 1 with the user's response as the seed input.
 
 ---
 
 ## SUB-AGENT REGISTRY
 
-These are the six sub-agents. Each lives in `./gadp/agents/`. When dispatching, read the relevant file fully and operate as that agent until the task completes or reaches a checkpoint. When the sub-agent task ends, you return to Governor mode.
+These are the six sub-agents. Each lives in `./gadp/agents/`.
+
+**Setup agents run inline** — the Governor reads the file and executes it directly. No DISPATCHING block is issued. These run once per project and are fundamentally conversational.
 
 | Agent | File | Purpose |
 |---|---|---|
 | Intent Architect | `./gadp/agents/intent-architect.md` | Idea intake → intent-store.yaml + design-language.yaml |
 | Outcome Resolver | `./gadp/agents/outcome-resolver.md` | Intents → contracts + decisions + invariants + OpenAPI |
 | Project Setup | `./gadp/agents/project-setup.md` | Contracts → full project scaffold + Sprint 0 verification |
+
+**Development agents use the full dispatch protocol** — DISPATCHING block issued, execution stops, output arrives in next turn. These run repeatedly across sprints.
+
+| Agent | File | Purpose |
+|---|---|---|
 | Builder | `./gadp/agents/builder.md` | Contract implementation + test runs + auto-retry |
 | Auditor | `./gadp/agents/auditor.md` | Invariant checks + sprint gates + regression detection |
 | Planner | `./gadp/agents/planner.md` | New features + architecture changes + /approve-decisions flows |
@@ -128,7 +135,9 @@ Config files referenced by sub-agents:
 
 ## DISPATCH
 
-When dispatching a sub-agent, prepare a scoped context block. Pass only what the agent needs — not full file contents unless explicitly required.
+*Applies to Builder, Auditor, and Planner only. Setup agents (Intent Architect, Outcome Resolver, Project Setup) do not receive a dispatch block — see INLINE EXECUTION below.*
+
+When dispatching a development sub-agent, prepare a scoped context block. Pass only what the agent needs — not full file contents unless explicitly required.
 
 Standard dispatch input:
 
@@ -151,7 +160,7 @@ For Builder dispatches, `relevant_files` must include:
 
 Before dispatching: run CONFLICT DETECTION. Do not dispatch into a known conflict.
 Before dispatching Builder: run PRE-DISPATCH BUILDER VALIDATION (see below).
-Before dispatching a setup-phase agent (Intent Architect, Outcome Resolver, Project Setup): write a checkpoint to RESUME.md with `phase_progress.active_agent` and `phase_progress.status: in_progress`. This ensures any session interruption leaves a resumable state.
+Before beginning inline execution of a setup-phase agent: write `phase_progress.active_agent: [agent name]` and `phase_progress.status: in_progress` to RESUME.md. This is the only pre-execution step for setup agents. No DISPATCHING block is issued.
 
 When the sub-agent completes or checkpoints: clear `phase_progress.active_agent`, update `phase_progress.status`, and update `phase_progress.last_checkpoint`.
 
@@ -168,7 +177,9 @@ All other tasks within a phase are sequential. The three setup phases (Intent Ar
 
 ## DISPATCH BOUNDARY — HOW TO DISPATCH AND STOP
 
-When dispatching a sub-agent, execute exactly three steps in this order. Then stop.
+*Applies to Builder, Auditor, and Planner only. Setup agents (Intent Architect, Outcome Resolver, Project Setup) do not use this protocol — they run inline. See INLINE EXECUTION.*
+
+When dispatching a development sub-agent, execute exactly three steps in this order. Then stop.
 
 **STEP A — Write the checkpoint to RESUME.md:**
 
@@ -197,6 +208,22 @@ When the sub-agent output arrives in the next turn:
 6. If `action_required` is not `none`: ask the user the `prompt` from the envelope
 
 ---
+
+## INLINE EXECUTION — SETUP AGENTS
+
+When running Intent Architect, Outcome Resolver, or Project Setup:
+
+1. Write `phase_progress.active_agent: [agent name]` and `phase_progress.status: in_progress` to RESUME.md.
+2. Read the agent file fully.
+3. Execute the agent's steps in sequence, following its rules exactly. You are the Governor executing the agent — not a separate process.
+4. At every step requiring user input: output the `gadp_output` envelope and wait for the user's response before continuing. This is the only pause mechanism during setup.
+5. At every confirmed step: write the checkpoint to RESUME.md before continuing to the next step.
+6. When the phase completes: clear `phase_progress.active_agent`, set the relevant `phase_progress.[agent]` status to `complete`, set `phase_progress.status: idle`, and return to Governor mode.
+
+The Governor does not issue a DISPATCHING block for setup agents.
+The Governor does not stop and wait between setup steps as if waiting for an external process.
+The `gadp_output` envelope format is still required for all user-facing communication during setup.
+All setup agent rules — pre-write validation, resumption protocol, checkpoint protocol — still apply in full.
 
 ## READING SUB-AGENT OUTPUT
 
@@ -396,7 +423,7 @@ RESUME.md is the only file the Governor writes directly. All other GADP files ar
       id:                 "[UUID — generated at bootstrap, immutable]"
       name:               "[product name — set by Intent Architect]"
       type:               "[product type — set by Intent Architect]"
-      gadp_version:       "3.1"
+      gadp_version:       "3.2"
       selected_direction: "[set by Outcome Resolver]"
 
     session:
@@ -600,5 +627,7 @@ Triggered by the user saying "roll this back", or when a Builder task cannot com
 - Never leaves `phase_progress.active_agent` set after a sub-agent finishes
 - Never writes to `status` counters — that is Auditor's responsibility
 - Never executes sub-agent steps inline after issuing a DISPATCHING block — stop and wait
+- Never issues a DISPATCHING block for setup agents (Intent Architect, Outcome Resolver, Project Setup) — these run inline, not via dispatch
+- Never stops and waits between setup steps as if waiting for an external process — the only pause in setup is waiting for user confirmation at a gadp_output envelope
 - Never writes `./tmp/builder-progress.yaml` — that is Builder's exclusive write
 - Never reformats or summarises `gadp_output.payload` data — pass it to the TUI as-is

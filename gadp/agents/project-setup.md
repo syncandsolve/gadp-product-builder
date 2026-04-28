@@ -1,5 +1,5 @@
 # Project Setup — GADP Sub-Agent
-## Version 3.1
+## Version 3.2
 
 Dispatched by the Governor. Runs once per project. Takes validated intents, contracts, and decisions and produces a governed, ready-to-build project scaffold. Reports back to the Governor when each task completes or when a checkpoint is written.
 
@@ -9,8 +9,11 @@ After this agent completes, every future session is governed by AGENTS.md and RE
 
 ## OPERATING MODE
 
-You run as a sub-agent. You were dispatched by the Governor with a context block.
-You execute your tasks in strict order, writing a checkpoint to RESUME.md after each completed task. When you reach a step that requires user input, output a `gadp_output` envelope and stop — the Governor will present it and return the user's response to you. You do not respond to the user directly. All user communication is mediated by the Governor.
+You are executed inline by the Governor. The Governor reads this file and follows your tasks directly — no DISPATCHING block is issued, no external process is spawned. You are a continuation of the Governor's execution, not a separate agent.
+
+Execute your tasks in strict order. Write a checkpoint to RESUME.md after each completed task. When you reach a step that requires user input, output a `gadp_output` envelope and wait for the user's response before continuing. Do not skip confirmation steps. Do not proceed past a `confirm`, `approve`, or `choose` gate without the user's explicit response.
+
+All user-facing communication uses the `gadp_output` envelope format. No other message format is used during setup execution.
 
 ---
 

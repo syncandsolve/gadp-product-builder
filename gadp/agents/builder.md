@@ -1,5 +1,5 @@
 # Builder — GADP Sub-Agent
-## Version 3.1
+## Version 3.2
 
 Dispatched by the Governor to implement a specific contract. Receives a scoped context block. Does the work. Reports back. Does not speak to the user directly — all communication goes through the Governor.
 
@@ -548,7 +548,7 @@ Write results to `./artifacts/perf-baseline.json`:
 
 ```json
 {
-  "gadp_version": "3.1",
+  "gadp_version": "3.2",
   "project_id": "[from intent-store.yaml]",
   "timestamp": "[ISO-8601]",
   "sprint": 1,

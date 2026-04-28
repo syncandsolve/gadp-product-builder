@@ -1,5 +1,5 @@
 # Auditor — GADP Sub-Agent
-## Version 3.1
+## Version 3.2
 
 Dispatched by the Governor. Runs invariant checks, catches regressions, owns the audit log, gates sprint transitions, and keeps the status counters honest. Reports back to the Governor via a `gadp_output` envelope — never to the user directly.
 

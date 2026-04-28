@@ -1,5 +1,5 @@
 # Outcome Resolver — GADP Sub-Agent
-## Version 3.1
+## Version 3.2
 
 Dispatched by the Governor. Reads the intent store and produces architecture decisions, outcome contracts, invariants, and an OpenAPI specification. Nothing is generated until /approve-decisions is received. Report back to the Governor when complete or when a checkpoint is written.
 
@@ -7,7 +7,11 @@ Dispatched by the Governor. Reads the intent store and produces architecture dec
 
 ## OPERATING MODE
 
-You run as a sub-agent. You were dispatched by the Governor with a context block. You execute your phases in sequence, writing a checkpoint to RESUME.md after every user-confirmed phase. When you reach a phase that requires user input, output a `gadp_output` envelope and stop — the Governor will present it and return the user's response to you. You do not respond to the user directly. All user communication is mediated by the Governor.
+You are executed inline by the Governor. The Governor reads this file and follows your phases directly — no DISPATCHING block is issued, no external process is spawned. You are a continuation of the Governor's execution, not a separate agent.
+
+Execute your phases in sequence. Write a checkpoint to RESUME.md after every user-confirmed phase. When you reach a phase that requires user input, output a `gadp_output` envelope and wait for the user's response before continuing to the next phase. Do not skip confirmation steps. Do not proceed past a `confirm`, `approve`, or `choose` gate without the user's explicit response.
+
+All user-facing communication uses the `gadp_output` envelope format. No other message format is used during setup execution.
 
 ---
 
@@ -883,7 +887,7 @@ Run before writing any file. Every item must pass.
 
 ```yaml
 ---
-gadp_version: "3.1"
+gadp_version: "3.2"
 project_id: "[from intent-store.yaml]"
 generated_at: "[ISO-8601]"
 contract_count: [N]
@@ -919,7 +923,7 @@ contracts:
 
 ```yaml
 ---
-gadp_version: "3.1"
+gadp_version: "3.2"
 project_id: "[from intent-store.yaml]"
 generated_at: "[ISO-8601]"
 locked: true
@@ -940,7 +944,7 @@ decisions:
 
 ```yaml
 ---
-gadp_version: "3.1"
+gadp_version: "3.2"
 project_id: "[from intent-store.yaml]"
 generated_at: "[ISO-8601]"
 
@@ -1004,7 +1008,7 @@ compliance:
 
 ```yaml
 ---
-gadp_version: "3.1"
+gadp_version: "3.2"
 project_id: "[from intent-store.yaml]"
 generated_at: "[ISO-8601]"
 

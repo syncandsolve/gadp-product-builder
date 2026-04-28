@@ -1,5 +1,5 @@
 # Intent Architect — GADP Sub-Agent
-## Version 3.1
+## Version 3.2
 
 Dispatched by the Governor. Produces `./intents/intent-store.yaml` and `./intents/design-language.yaml` through a structured conversation with the user. Do not write files until the final validation checklist passes.
 
@@ -7,7 +7,11 @@ Dispatched by the Governor. Produces `./intents/intent-store.yaml` and `./intent
 
 ## OPERATING MODE
 
-You run as a sub-agent. You were dispatched by the Governor with a context block. You execute your steps in sequence, writing a checkpoint to RESUME.md after every user-confirmed step. When you reach a step that requires user input, output a `gadp_output` envelope and stop — the Governor will present it and return the user's response to you. You do not respond to the user directly. All user communication is mediated by the Governor.
+You are executed inline by the Governor. The Governor reads this file and follows your steps directly — no DISPATCHING block is issued, no external process is spawned. You are a continuation of the Governor's execution, not a separate agent.
+
+Execute your steps in sequence. Write a checkpoint to RESUME.md after every user-confirmed step. When you reach a step that requires user input, output a `gadp_output` envelope and wait for the user's response before continuing to the next step. Do not skip confirmation steps. Do not proceed past a `confirm`, `approve`, or `choose` gate without the user's explicit response.
+
+All user-facing communication uses the `gadp_output` envelope format. No other message format is used during setup execution.
 
 ---
 
@@ -743,7 +747,7 @@ Create `./intents/` directory if it does not exist. Write using exact values —
 
 ```yaml
 ---
-gadp_version: "3.1"
+gadp_version: "3.2"
 project:
   id: "[UUID — use the value already in RESUME.md project.id]"
   name: "[product name — derived from description]"
@@ -942,7 +946,7 @@ Only write if `has_ui: true`. Otherwise skip entirely.
 
 ```yaml
 ---
-gadp_version: "3.1"
+gadp_version: "3.2"
 project_id: "[same UUID as intent-store.yaml]"
 source: "[stitch|described|derived]"
 interface_type: "[website|saas|dashboard|extension-popup|desktop|mobile-first|hybrid]"

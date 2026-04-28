@@ -1,5 +1,5 @@
 # GADP — Governed Agentic Development Protocol
-## Version 3.1
+## Version 3.2
 
 GADP is a protocol for building software with an AI coding tool that keeps the project governed, resumable, and production-ready across every session.
 
@@ -17,15 +17,20 @@ Every piece of functionality the project needs is written as a contract — a pr
 
 ## How it works
 
-GADP uses one entry point — the **Governor** — and six specialised agents that the Governor dispatches.
+GADP uses one entry point — the **Governor** — and six specialised agents that the Governor runs.
 
-You talk to the Governor. The Governor reads the project's state, decides what needs to happen, dispatches the right agent to do it, and tells you what was done in plain language. You never interact with agents directly.
+You talk to the Governor. The Governor reads the project's state, decides what needs to happen, runs the right agent, and tells you what was done in plain language. You never interact with agents directly.
 
-**The six agents:**
+**The six agents fall into two groups:**
+
+**Setup agents** — run once per project, executed inline by the Governor as a natural conversation:
 
 - **Intent Architect** — understands what you are building and produces the complete intent store: capability intents, quality targets, design tokens, screens, and journey
 - **Outcome Resolver** — turns intents into executable contracts: architecture decisions, threat model, outcome contracts, invariants, and OpenAPI spec
 - **Project Setup** — scaffolds the project: framework initialisation, dependencies, environment config, test stubs, CI/CD pipeline, and Sprint 0 verification
+
+**Development agents** — run repeatedly across sprints, dispatched as isolated sub-agents:
+
 - **Builder** — implements contracts one at a time, runs tests, fixes failures, and marks contracts passing
 - **Auditor** — checks invariants, catches regressions, owns the audit log, and gates sprint transitions
 - **Planner** — handles new features, architecture changes, sprint planning, and contract revisions

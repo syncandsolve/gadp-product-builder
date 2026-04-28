@@ -1,5 +1,5 @@
 # GADP — Session Handoff
-## Version 3.1 — Updated after the v3.1 improvement session
+## Version 3.2 — Updated after the v3.2 improvement session
 
 ---
 
@@ -31,7 +31,7 @@ gadp/
     framework-globs.yaml
     qi-mandatory.yaml
     invariant-defaults.yaml
-  scripts/                        ← NEW in v3.1 — canonical script implementations
+  scripts/                        ← canonical script implementations (added in v3.1)
     gadp_init_project.py
     gadp_update_contract.py
     gadp_append_contract.py
@@ -55,9 +55,13 @@ v3.0 replaced the three prompts with `AGENTS.md` (the Governor) and six sub-agen
 
 What was preserved from v2: the intent store, outcome contracts, STRIDE threat modelling, auto-detectable invariants, the audit log, Sprint 0 separation, data lifecycle and deletion contracts.
 
-### v3.1 — This session
+### v3.1 — Eight targeted fixes from real-world use
 
-Eight specific problems identified in real-world use were analysed rigorously and addressed with targeted structural changes. Full details below.
+Eight specific problems identified in real-world use were analysed rigorously and addressed with targeted structural changes. Full details in the v3.1 section below.
+
+### v3.2 — Setup agent execution model corrected
+
+One problem identified after v3.1 shipped: the DISPATCH BOUNDARY added in v3.1 to stop the Governor from running agent steps inline did not work for setup agents, because there is no tooling in the environment that actually enforces a stop. The v3.1 fix was correct for development agents (Builder, Auditor, Planner) where a real subprocess or Task tool provides process isolation — but for setup agents it left the model in a contradictory state: instructed to stop and wait for an external response that was never going to arrive. Full details in the v3.2 section below.
 
 ---
 
@@ -219,6 +223,47 @@ The progress file is **not gitignored** — it must survive session ends. The `.
 
 ---
 
+## What was changed in v3.2
+
+### Problem 9: DISPATCH BOUNDARY did not work for setup agents
+
+**What was wrong.** The v3.1 DISPATCH BOUNDARY ("Step C — Stop. Do not continue. Do not begin executing the agent's steps yourself.") was observed failing for setup agents in two separate new-project sessions. The Governor would issue the DISPATCHING block for Intent Architect, then immediately continue executing Intent Architect's steps inline in the same turn — the opposite of what the instruction required.
+
+The root cause: the stop in the DISPATCH BOUNDARY is purely aspirational. There is no tool call, no subprocess, no process boundary that actually enforces it. The model reads `intent-architect.md` to "operate as that agent" and then keeps going, because nothing in the environment creates a real pause. The v3.1 fix worked on the correct diagnosis (Governor running agent steps inline) but applied the wrong remedy (a text instruction to stop, with no enforcement mechanism).
+
+This failure mode is specific to setup agents. Development agents (Builder, Auditor, Planner) dispatch correctly because Claude Code's `Task` tool or an equivalent parallel sub-agent mechanism provides genuine process isolation — the DISPATCHING block hands off to a real subprocess, and there is an actual boundary the model cannot cross. That path remains unchanged and correct.
+
+**The deeper insight.** Setup agents and development agents have fundamentally different execution characteristics:
+
+- Setup agents run once per project. They are interactive conversations — eight confirmation steps in Intent Architect, seven phases with an `/approve-decisions` gate in Outcome Resolver. There is no engineering work being isolated; there is a back-and-forth dialogue. The dispatch-and-wait model adds overhead with no payoff.
+- Development agents run repeatedly across sprints. Builder implements contracts with real tool calls, file writes, test runs, and sub-task state. True isolation prevents context bleed between contracts. Dispatch-and-wait is the right model here.
+
+Applying the dispatch protocol uniformly across all six agents confused the model about what it was supposed to be doing during setup: it was instructed to stop and wait for an external agent response that was never going to arrive.
+
+**What changed.** Two execution modes formalised:
+
+**Inline execution** — for Intent Architect, Outcome Resolver, and Project Setup. The Governor reads the agent file and executes it directly. No DISPATCHING block is issued. No stop-and-wait. The `gadp_output` envelope format is preserved for all user communication. Checkpoints still write to RESUME.md after every confirmed step. All resumption, validation, and checkpoint protocol rules in each agent file still apply in full.
+
+**Dispatch protocol** — for Builder, Auditor, and Planner. Full DISPATCH BOUNDARY, DISPATCHING block, stop-and-wait. Unchanged from v3.1.
+
+The Governor persona (IDENTITY section, COMMUNICATION RULES, authority model) is untouched. The change is exclusively in execution mechanics.
+
+**Files changed:**
+
+| File | Change |
+|---|---|
+| `AGENTS.md` | SUB-AGENT REGISTRY split into two labeled tables (setup inline / development dispatch). STATE DETECTION action lines for INTENT_ARCHITECT, OUTCOME_RESOLVER, PROJECT_SETUP updated from "Dispatch X" to "Execute X inline". MID_PHASE resume logic split by agent type. BOOTSTRAP Step 4 updated. DISPATCH section scoped to development agents with note. DISPATCH BOUNDARY scoped with note. New INLINE EXECUTION section added. WHAT THE GOVERNOR NEVER DOES: two new items added. |
+| `gadp/agents/intent-architect.md` | OPERATING MODE rewritten: inline execution, no DISPATCHING block, explicit prohibition on skipping confirmation gates. |
+| `gadp/agents/outcome-resolver.md` | OPERATING MODE rewritten: same pattern, "phases" language. |
+| `gadp/agents/project-setup.md` | OPERATING MODE rewritten: same pattern, "tasks" language. |
+| All 7 agent files + `gadp_init_project.py` | Version tag bumped: `3.1` → `3.2`. |
+| `README.md` | "How it works" updated to describe the two agent groups. Version bumped. |
+| `gadp-handoff.md` | This entry added. Version bumped. |
+
+**What was not changed:** builder.md, auditor.md, planner.md (beyond version tag), all config files, all scripts (beyond version strings in gadp_init_project.py), all YAML schemas embedded in agent files (beyond gadp_version strings).
+
+---
+
 ## Key design decisions to preserve
 
 These were established in v3.0 and remain unchanged:
@@ -234,7 +279,7 @@ These were established in v3.0 and remain unchanged:
 - **`threat-model.yaml` does not require `/approve-decisions`.** Threat model updates are operational, not architectural. Only `decisions.yaml` and `invariants.yaml` require the gate.
 - **`./decisions/decisions.yaml` never contains T-* IDs.** It contains `threat_model_ref: "./decisions/threat-model.yaml"` as a pointer. All T-* data lives in `threat-model.yaml` exclusively.
 
-New in v3.1:
+Added in v3.1:
 
 - **`./tmp/builder-progress.yaml` is not gitignored.** It must survive session ends. The `tmp/*` + `!tmp/builder-progress.yaml` gitignore pattern is the correct implementation.
 - **Canonical scripts live in `./gadp/scripts/`.** They are copied to `./scripts/` at S0-T001. If a script errors, check the canonical version before attempting inline fixes.
@@ -242,34 +287,36 @@ New in v3.1:
 - **`gadp_output` envelopes are the only user-facing output format.** Agents never produce freeform presentation blocks. The Governor never reformats payload data — it passes it to the TUI as-is.
 - **Session boundaries are enforced by the Governor, not advisory.** The three hard stops are state-machine checks, not notes in a prompt.
 
+Added in v3.2:
+
+- **Setup agents execute inline. Development agents use dispatch.** Intent Architect, Outcome Resolver, and Project Setup are executed directly by the Governor — no DISPATCHING block, no stop-and-wait. Builder, Auditor, and Planner use the full dispatch protocol with process isolation.
+- **The DISPATCH BOUNDARY applies to development agents only.** Do not apply it to setup agents. The enforcement mechanism (Task tool / subprocess) does not exist in the setup context.
+- **`gadp_output` envelopes are still required during inline execution.** Inline does not mean freeform. Every user-facing output during setup must follow the envelope format. Every confirmation gate must be observed.
+
 ---
 
-## The v3.1 file manifest
+## The v3.2 file manifest
 
-All 14 files updated or created:
+Files changed from v3.1:
 
 | File | Change type | Key changes |
 |---|---|---|
-| `AGENTS.md` | Updated | DISPATCH BOUNDARY, PRE-DISPATCH BUILDER VALIDATION, HARD STOPS, READING SUB-AGENT OUTPUT, updated RESUME.md schema (derived_context, file_map additions), updated communication rules |
-| `gadp/agents/intent-architect.md` | Updated | OPERATING MODE, all display blocks → gadp_output envelopes, derived_context writes at each step, CHECKPOINT PROTOCOL |
-| `gadp/agents/outcome-resolver.md` | Updated | OPERATING MODE, Phase 3 split into 3A/3B with gates, Phase 4 confirm gate, all phases → gadp_output envelopes, derived_context writes, gadp_version 3.1 |
-| `gadp/agents/project-setup.md` | Updated | S0-T001 rewritten (copy not generate), gitignore rules for builder-progress.yaml, S0-T010 HARD STOP envelope, Phase 0 → gadp_output envelopes, tmp/ directory creation |
-| `gadp/agents/builder.md` | Updated | OPERATING MODE, RESUMPTION reads progress file, Step 3/4/5/6/8 atomic progress writes, Step 9 → gadp_output envelope, threat-model.yaml path note |
-| `gadp/agents/auditor.md` | Updated | OPERATING MODE, Step 1 reads builder-progress.yaml, final report → gadp_output envelope with builder_progress_note, threat-model.yaml path note |
-| `gadp/agents/planner.md` | Updated | OPERATING MODE, all flows → gadp_output envelopes, Flow 4 session_boundary_required field, threat-model.yaml path note |
-| `gadp/scripts/gadp_update_contract.py` | New | Canonical — mutable/restricted/immutable field separation, atomic write |
-| `gadp/scripts/gadp_append_contract.py` | New | Canonical — full schema validation, OC-NNN format check, type-specific counts |
-| `gadp/scripts/gadp_append_intent.py` | New | Canonical — CI-*/SI-*/QI-* type routing, type-specific validation |
-| `gadp/scripts/gadp_update_intent_status.py` | New | Canonical — status-only, per-type status enums |
-| `gadp/scripts/gadp_append_audit.py` | New | Canonical — 17 named event types, automatic timestamp, normalised key order |
-| `gadp/scripts/gadp_validate.py` | New | Canonical — 7-file validation, cross-file consistency checks, coloured output |
-| `gadp/scripts/gadp_init_project.py` | New | Generates all 9 GADP YAML files from project-init.json config, self-validates |
+| `AGENTS.md` | Updated | SUB-AGENT REGISTRY split, STATE DETECTION updated, BOOTSTRAP Step 4 updated, DISPATCH and DISPATCH BOUNDARY scoped, new INLINE EXECUTION section, WHAT NEVER DOES extended |
+| `gadp/agents/intent-architect.md` | Updated | OPERATING MODE rewritten for inline execution, version tag |
+| `gadp/agents/outcome-resolver.md` | Updated | OPERATING MODE rewritten for inline execution, version tag |
+| `gadp/agents/project-setup.md` | Updated | OPERATING MODE rewritten for inline execution, version tag |
+| `gadp/agents/builder.md` | Version tag only | No functional changes |
+| `gadp/agents/auditor.md` | Version tag only | No functional changes |
+| `gadp/agents/planner.md` | Version tag only | No functional changes |
+| `gadp/scripts/gadp_init_project.py` | Version strings only | gadp_version "3.1" → "3.2" |
+| `README.md` | Updated | "How it works" reflects two agent groups, version bumped |
+| `gadp-handoff.md` | Updated | v3.2 entry added, arc updated, design decisions updated, version bumped |
 
 ---
 
 ## Improvement areas identified but not yet implemented
 
-These were discussed or noted but not addressed in this session. Good candidates for the next round.
+These were discussed or noted but not addressed. Good candidates for the next round.
 
 1. **`gadp status` shortcut** — a one-liner the Governor recognises that prints current phase, sprint, passing/failing counts, and the next action. Useful for re-orienting without triggering a full session start.
 
