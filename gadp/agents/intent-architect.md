@@ -595,14 +595,22 @@ gadp_output:
             recovery_path: "[what they can do next]"
         - id: SCREEN-002
           name: "[screen name]"
-          single_job: "[job]"
-          journey_position: "[position]"
+          single_job: "[what the user accomplishes here — one sentence]"
+          journey_position: "[entry|middle|value-moment|supporting]"
           in_sprint1_chain: true
           states:
-            loading: "[...]"
-            empty: "[...]"
-            populated: "[...]"
-            error: "[...]"
+            loading:   "[skeleton description — never blank white]"
+            empty:     "[icon + headline + primary action — never 'No data']"
+            populated: "[normal operating state with real data]"
+            error:     "[error state + recovery path — never raw error text]"
+          abandonment_recovery:
+            signal: "[what signals the user is stuck]"
+            action: "[what the UI does]"
+          error_recovery:
+            failure_mode: "[what can fail here]"
+            user_sees: "[plain-language error state]"
+            recovery_path: "[what they can do next]"
+        # Repeat this full structure for every screen — no fields omitted, no screens summarised in narrative
       primary_journey:
         chain: ["SCREEN-001", "SCREEN-002", "SCREEN-003"]
         first_value_screen: "SCREEN-[NNN]"
