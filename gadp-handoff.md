@@ -334,10 +334,10 @@ These were discussed or noted but not addressed. Good candidates for the next ro
 
 ## How to continue
 
-Read the files from the repo, then propose and implement improvements one at a time. The owner will validate each change before the next one is made.
+Clone the repo, read the files, then propose and implement improvements one at a time. The owner will validate each change before the next one is made.
 
-Start by fetching:
-- `https://raw.githubusercontent.com/syncandsolve/gadp-product-builder/main/AGENTS.md`
-- `https://raw.githubusercontent.com/syncandsolve/gadp-product-builder/main/gadp-handoff.md`
+```bash
+git clone https://github.com/syncandsolve/gadp-product-builder.git
+```
 
-Then propose what you want to improve, explain the change and why, and wait for approval before generating anything.
+Start by reading `AGENTS.md` and `gadp-handoff.md` in full. Then propose what you want to improve, explain the change and why, and wait for approval before generating anything.
