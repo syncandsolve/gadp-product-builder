@@ -49,7 +49,7 @@ Read RESUME.md. Determine state using the rules below in order. Use the first ma
 **Condition:** `phase_progress.status` is `in_progress` AND `phase_progress.active_agent` is set.
 **Action:** Do not auto-resume. Tell the user what was in progress and ask if they want to continue.
 Say something like: *"Last time we were working through your app's capabilities — we confirmed the first batch but hadn't finished. Want to pick up there, or is there something else on your mind?"*
-If the user says resume or yes: if `active_agent` is Intent Architect, Outcome Resolver, or Project Setup — execute that agent inline, reading its file and resuming from `phase_progress.last_checkpoint`. If `active_agent` is Builder, Auditor, or Planner — dispatch using the full dispatch protocol with `resume_from: phase_progress.last_checkpoint`.
+If the user says resume or yes: if `active_agent` is Intent Architect, Outcome Resolver, or Project Setup — execute that agent inline, reading its file and resuming from `phase_progress.last_checkpoint`. If `active_agent` is Project Setup and `sprint_0.status` is `in_progress`, jump directly to the SPRINT 0 VERIFICATION section and resume from `sprint_0.last_step`. If `active_agent` is Builder, Auditor, or Planner — dispatch using the full dispatch protocol with `resume_from: phase_progress.last_checkpoint`.
 
 ### INTENT_ARCHITECT
 **Condition:** `./intents/intent-store.yaml` does not exist OR `phase_progress.intent_architect` is not `complete`.
@@ -65,7 +65,13 @@ If the user says resume or yes: if `active_agent` is Intent Architect, Outcome R
 
 ### SPRINT_0
 **Condition:** `setup_progress.last_completed_task` is `S0-T010` AND `sprint_0.status` is not `passed`.
-**Action:** Check HARD STOP 1 before dispatching. If hard stop applies, tell the user to start a new session. Otherwise dispatch Project Setup sub-agent with `task: sprint_0_verification`.
+**Action:** Check HARD STOP 1 first. If the hard stop applies, tell the user to start a new session and stop.
+
+Otherwise, write `phase_progress.active_agent: project-setup` and `phase_progress.status: in_progress` to RESUME.md. Then execute Project Setup inline: read `./gadp/agents/project-setup.md` and jump directly to the SPRINT 0 VERIFICATION section. Do not re-run setup tasks S0-T001 through S0-T010.
+
+Two sub-cases:
+- If `sprint_0.status` is `not_run`: begin from S0-VERIFY-0.
+- If `sprint_0.status` is `in_progress`: resume from `sprint_0.last_step` — skip all checks already recorded in `last_step` and earlier.
 
 ### DEVELOPMENT
 **Condition:** `sprint_0.status` is `passed`.
@@ -220,6 +226,13 @@ When running Intent Architect, Outcome Resolver, or Project Setup:
 5. At every confirmed step: write the checkpoint to RESUME.md before continuing to the next step.
 6. When the phase completes: clear `phase_progress.active_agent`, set the relevant `phase_progress.[agent]` status to `complete`, set `phase_progress.status: idle`, and return to Governor mode.
 
+**Sprint 0 verification is a special case of inline Project Setup execution.** When the Governor jumps to the SPRINT 0 VERIFICATION section:
+- `phase_progress.active_agent` is already set to `project-setup` (set by the SPRINT_0 state action before reading the file)
+- Update `sprint_0.last_step` after every check — this is the resume anchor
+- Update `sprint_0.status: in_progress` before the first check, `sprint_0.status: passed` on completion
+- On completion: clear `phase_progress.active_agent`, set `phase_progress.status: idle`
+- After writing the completion envelope, output a plain follow-up message telling the user to start a new session — do not rely solely on `focus.next_action` being surfaced
+
 The Governor does not issue a DISPATCHING block for setup agents.
 The Governor does not stop and wait between setup steps as if waiting for an external process.
 The `gadp_output` envelope format is still required for all user-facing communication during setup.
@@ -286,11 +299,11 @@ These are the only situations where the Governor explicitly refuses to dispatch 
 
 ### HARD STOP 1 — Before Sprint 0 Verification
 
-**Condition:** `setup_progress.last_completed_task == "S0-T010"` AND `sprint_0.status == "not_run"` AND the current session has been active through any `S0-T0xx` task (i.e. this is not a fresh session opening into a completed-setup state).
+**Condition:** `setup_progress.last_completed_task == "S0-T010"` AND `sprint_0.status == "not_run"` AND `session_notes` contains the string `"HARD STOP: Sprint 0 verification must begin in a new session"` AND that text was written in a prior session (i.e. `phase_progress.project_setup` is already `complete` when this session opens).
 
-**How to detect a fresh session:** If the first user message this session was "hi", "resume", or similar, and RESUME.md already shows `last_completed_task: S0-T010` when this session opened, this is a fresh session — HARD STOP 1 does not apply. If Project Setup ran during this session and just completed S0-T010, the stop applies.
+**Simpler detection:** If `phase_progress.project_setup` is `complete` AND `sprint_0.status` is `not_run` AND the current session has run any S0-T0xx task — the stop applies. If the session opened with `project_setup: complete` already set and has not run any setup tasks itself, the stop does not apply. When in doubt: if the user's first message this session was `hi`, `resume`, `start verification`, or similar and RESUME.md already showed `project_setup: complete` at that point, this is a resume session — do not apply the stop.
 
-**Action:** Do not dispatch Project Setup for `sprint_0_verification`. Instead tell the user:
+**Action:** Do not begin Sprint 0 verification. Tell the user:
 
 *"Setup is complete — all ten tasks are done. Before we verify that everything works correctly, you need to start a fresh session. This one has been running through the full project setup and the context is getting heavy. Start a new session and say 'resume' to kick off Sprint 0 verification."*
 
@@ -623,6 +636,7 @@ Triggered by the user saying "roll this back", or when a Builder task cannot com
 - Never begins Sprint 1 before Sprint 0 has passed
 - Never begins Sprint 1 implementation in the same session that ran Sprint 0 verification
 - Never begins Sprint 0 verification in the same session that ran project setup tasks S0-T001 through S0-T010
+- Never re-runs setup tasks S0-T001 through S0-T010 when the SPRINT_0 state is active — jump directly to the SPRINT 0 VERIFICATION section
 - Never accepts /approve-deploy-prod without verifying all production gate conditions in the current session
 - Never leaves `phase_progress.active_agent` set after a sub-agent finishes
 - Never writes to `status` counters — that is Auditor's responsibility

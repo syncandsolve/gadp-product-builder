@@ -1,7 +1,7 @@
 # Project Setup — GADP Sub-Agent
 ## Version 3.2
 
-Dispatched by the Governor. Runs once per project. Takes validated intents, contracts, and decisions and produces a governed, ready-to-build project scaffold. Reports back to the Governor when each task completes or when a checkpoint is written.
+Executed inline by the Governor. Runs once per project. Takes validated intents, contracts, and decisions and produces a governed, ready-to-build project scaffold. Also runs Sprint 0 verification when the Governor detects setup is complete and a fresh session has opened.
 
 After this agent completes, every future session is governed by AGENTS.md and RESUME.md already on disk. No future session requires re-running this agent.
 
@@ -27,11 +27,11 @@ You do not generate a new AGENTS.md. The AGENTS.md governing this project is alr
 
 ## RESUMPTION PROTOCOL
 
-When dispatched with `resume_from` set:
+When resuming inline from a prior session (`setup_progress.last_completed_task` is set and not `S0-T010`):
 
 1. Read RESUME.md fully — `setup_progress.last_completed_task` and `setup_progress.remaining_tasks`.
 2. Read which tasks have been completed from the checkpoint.
-3. Tell the Governor briefly what was already done and where you are resuming from.
+3. Output a brief status line describing what was already done and where execution is resuming from.
 4. Begin from the next task after `last_completed_task`. Do not re-run completed tasks unless marked non-idempotent with partial state (S0-T003 only — see idempotency table).
 
 ---
@@ -1342,9 +1342,13 @@ Do not output anything after this envelope. The Governor will handle the session
 
 ## SPRINT 0 VERIFICATION
 
-When dispatched with `task: sprint_0_verification`, the Governor has detected that `setup_progress.last_completed_task` is `S0-T010` and `sprint_0.status` is `not_run`. This is a fresh session — the HARD STOP condition does not apply here.
+The Governor jumps directly to this section when `setup_progress.last_completed_task` is `S0-T010` and `sprint_0.status` is `not_run` or `in_progress`. Do not re-run setup tasks S0-T001 through S0-T010 — begin here.
 
-Run all Sprint 0 checks in order. Update `sprint_0.last_step` in RESUME.md after each check. If any check fails: stop, produce a status_report envelope explaining what failed and exactly what to fix, wait.
+Before running the first check, write `sprint_0.status: in_progress` to RESUME.md if it is not already set.
+
+If `sprint_0.status` was already `in_progress` when this section was entered (interrupted prior session): read `sprint_0.last_step` from RESUME.md and skip all checks up to and including that step. Resume from the next check after `last_step`.
+
+Run all Sprint 0 checks in order. Update `sprint_0.last_step` in RESUME.md after each check — this is the resume anchor if the session ends. If any check fails: stop, produce a status_report envelope explaining what failed and exactly what to fix, wait.
 
 ### S0-VERIFY-0 — GADP validation
 
@@ -1478,6 +1482,12 @@ focus:
   next_action: "Sprint 0 passed. Start a new session — the Governor will plan Sprint 1 and dispatch Builder."
 ```
 
+Then clear `phase_progress.active_agent` and set `phase_progress.status: idle`.
+
+After writing RESUME.md, output this plain message to the user — do not rely on `focus.next_action` being surfaced automatically:
+
+*"Sprint 0 is verified and clean. Start a new session and say 'resume' — the Governor will pick up Sprint 1 planning from there."*
+
 If any verification fails: produce a status_report envelope naming the failing step, the exact error, and the required fix. Update RESUME.md with the failing step and blocker.
 
 ---
@@ -1488,4 +1498,4 @@ The Project Setup agent's work is complete when either:
 - S0-T010 produces the HARD STOP envelope (setup tasks done, verification pending), or
 - S0-VERIFY-COMPLETE produces the verification passed envelope
 
-In both cases, clear `phase_progress.active_agent` and set `phase_progress.project_setup` appropriately before the final envelope. Do not output anything after the final envelope.
+In both cases `phase_progress.active_agent` is cleared and `phase_progress.status` is set to `idle` before the final envelope is produced. Do not output anything after the final envelope or the post-verification new-session message.

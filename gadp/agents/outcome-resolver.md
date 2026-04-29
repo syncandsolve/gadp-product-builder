@@ -1,7 +1,7 @@
 # Outcome Resolver — GADP Sub-Agent
 ## Version 3.2
 
-Dispatched by the Governor. Reads the intent store and produces architecture decisions, outcome contracts, invariants, and an OpenAPI specification. Nothing is generated until /approve-decisions is received. Report back to the Governor when complete or when a checkpoint is written.
+Executed inline by the Governor. Reads the intent store and produces architecture decisions, outcome contracts, invariants, and an OpenAPI specification. Nothing is generated until /approve-decisions is received.
 
 ---
 
@@ -25,7 +25,7 @@ Technical IDs (OC-*, DEC-*, INV-*, T-*) are internal references written to YAML 
 
 ## RESUMPTION PROTOCOL
 
-When dispatched with `resume_from` set:
+When resuming inline from a prior session (`phase_progress.last_checkpoint` is set):
 
 1. Read RESUME.md fully — `phase_progress.confirmed_data`, `phase_progress.confirmed_data.derived_context`, and `phase_progress.last_checkpoint`.
 2. Read `derived_context` — if `direction_selection_rationale` or `stack_rationale` entries exist, use them as your starting point rather than re-deriving from scratch.
@@ -33,7 +33,7 @@ When dispatched with `resume_from` set:
 4. Check for `./tmp/phase5-checkpoint.yaml` — if present, Phase 5 was completed in a prior session; resume from Phase 6 directly.
 5. Check for `./tmp/stride-checkpoint.txt` — if present and contains `SI-INTENTS-WRITTEN`, skip the SI-* append step.
 6. Identify the last confirmed checkpoint and resume from the next phase.
-7. Output a brief status_report envelope to the Governor describing what was done and where you are resuming from.
+7. Output a brief status line describing what was already done and where execution is resuming from.
 
 Do not re-run any phase that has been checkpointed. Confirmed data in RESUME.md takes precedence.
 

@@ -1,7 +1,7 @@
 # Intent Architect — GADP Sub-Agent
 ## Version 3.2
 
-Dispatched by the Governor. Produces `./intents/intent-store.yaml` and `./intents/design-language.yaml` through a structured conversation with the user. Do not write files until the final validation checklist passes.
+Executed inline by the Governor. Produces `./intents/intent-store.yaml` and `./intents/design-language.yaml` through a structured conversation with the user. Do not write files until the final validation checklist passes.
 
 ---
 
@@ -27,13 +27,13 @@ One question per envelope. If you have two things to confirm, confirm the more c
 
 ## RESUMPTION PROTOCOL
 
-When dispatched with `resume_from` set, do the following before anything else:
+When resuming inline from a prior session (`phase_progress.last_checkpoint` is set), do the following before anything else:
 
 1. Read `RESUME.md` — specifically `phase_progress.confirmed_data`, `phase_progress.confirmed_data.derived_context`, and `phase_progress.last_checkpoint`.
 2. Read whatever intent files exist: `./intents/intent-store.yaml` and `./intents/design-language.yaml` if present.
 3. Identify the last confirmed step from the checkpoint ID.
 4. Read `derived_context` — if entries exist for fields you would normally re-derive (product_type_rationale, blast_rationale, etc.), use them as your starting point rather than re-deriving from scratch. This preserves cross-session reasoning consistency.
-5. Output a brief envelope telling the Governor what was done and where you are resuming from.
+5. Output a brief status line describing what was already done and where execution is resuming from.
 6. Do not re-run or re-ask anything that has a confirmed checkpoint. Proceed from the next step.
 
 Confirmed data in `phase_progress.confirmed_data` takes precedence over anything re-derived. Treat confirmed values as locked.
