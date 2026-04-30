@@ -1,5 +1,5 @@
 # Project Setup — GADP Sub-Agent
-## Version 3.2
+## Version 3.3
 
 Executed inline by the Governor. Runs once per project. Takes validated intents, contracts, and decisions and produces a governed, ready-to-build project scaffold. Also runs Sprint 0 verification when the Governor detects setup is complete and a fresh session has opened.
 
@@ -49,7 +49,7 @@ These apply at all times. A constraint violation is a hard stop — report and w
 - All temporary staging uses `./tmp/` — created at S0-T001.
 - Never `cd` outside the project root. Use relative paths for all operations.
 - Framework initialisers must be staged in `./tmp/[project-name]-init/` before merging into the project root.
-- All GADP YAML mutations use `./scripts/gadp_*.py` — never write YAML directly.
+- All GADP YAML mutations use `./gadp/scripts/gadp_*.py` — never write YAML directly.
 - `./tmp/builder-progress.yaml` must survive sessions — it is NOT gitignored. See S0-T003 gitignore rules.
 - T-* threat IDs live in `./decisions/threat-model.yaml`. `decisions.yaml` contains only a `threat_model_ref` pointer. Always read threat data from `threat-model.yaml` directly.
 
@@ -61,7 +61,7 @@ If a task fails: identify it, tell the user exactly what went wrong and what to 
 
 | Task | Idempotent | Recovery on failure |
 |---|---|---|
-| S0-T001 | Yes | Re-run — script copy and RESUME.md update can be overwritten |
+| S0-T001 | Yes | Re-run — script verification and RESUME.md update can be overwritten |
 | S0-T002 | Yes | Re-run — staging directory can be recreated |
 | S0-T003 | **No** | List which files were merged before failure. Resume from that point — do not re-run the full merge |
 | S0-T004 | Yes | Re-run — install is idempotent |
@@ -199,29 +199,26 @@ Tasks run in strict order S0-T001 through S0-T010. After each task completes suc
 
 ---
 
-### S0-T001 — Mutation Scripts + Temp Directory + RESUME.md Population
+### S0-T001 — Verify Scripts + Temp Directory + RESUME.md Population
 
 Four actions in strict order.
 
-#### Step 1 — Copy canonical GADP mutation scripts
+#### Step 1 — Verify GADP mutation scripts are available
 
-Create `./scripts/` directory if it does not exist.
-
-Check if `./gadp/scripts/` exists. If it does:
+Check if `./gadp/scripts/` exists and contains the required scripts:
 
 ```
-cp ./gadp/scripts/gadp_append_intent.py      ./scripts/
-cp ./gadp/scripts/gadp_update_intent_status.py ./scripts/
-cp ./gadp/scripts/gadp_append_contract.py    ./scripts/
-cp ./gadp/scripts/gadp_update_contract.py    ./scripts/
-cp ./gadp/scripts/gadp_append_audit.py       ./scripts/
-cp ./gadp/scripts/gadp_validate.py           ./scripts/
+gadp_append_intent.py
+gadp_update_intent_status.py
+gadp_append_contract.py
+gadp_update_contract.py
+gadp_append_audit.py
+gadp_validate.py
 ```
 
-If `./gadp/scripts/` does NOT exist:
+Scripts are used directly from `./gadp/scripts/` — they are not copied to a project-level `./scripts/` directory. All agent script invocations use `python gadp/scripts/gadp_*.py`.
 
-- Check if the user placed pre-generated scripts at the project root. If any `gadp_*.py` files are present at the root, move them to `./scripts/`.
-- If no scripts are found anywhere: STOP. Output this envelope and wait:
+If `./gadp/scripts/` does NOT exist or any required script is missing:
 
 ```yaml
 gadp_output:
@@ -233,17 +230,16 @@ gadp_output:
   data:
     type: status_report
     payload:
-      blocker: "gadp/scripts/ directory not found"
-      resolution: "Copy the gadp/scripts/ directory from the GADP repository into your project root, then resume."
-      alternative: "If you have pre-generated gadp_*.py scripts, place them at the project root — I will move them to ./scripts/."
+      blocker: "gadp/scripts/ directory not found or incomplete"
+      resolution: "Ensure the gadp/ directory from the GADP repository is present in your project root, then resume."
   action_required: confirm
-  prompt: "Once the scripts are in place, say 'resume S0-T001' to continue."
+  prompt: "Once gadp/scripts/ is in place, say 'resume S0-T001' to continue."
 ```
 
-After scripts are in place, run the self-test:
+After verifying scripts are in place, run the self-test:
 
 ```
-python scripts/gadp_validate.py
+python gadp/scripts/gadp_validate.py
 ```
 
 This must complete without errors on the existing GADP files. If it fails: report which file failed and the exact field error. Fix the issue before proceeding — do not work around it.
@@ -269,7 +265,7 @@ If audit-log.yaml does not already exist (gadp_init_project.py may have created 
 
 ```
 echo '{"type": "bootstrap", "actor": "project-setup", "note": "Project scaffolded by GADP Project Setup agent."}' \
-  | python scripts/gadp_append_audit.py
+  | python gadp/scripts/gadp_append_audit.py
 ```
 
 If audit-log.yaml already exists with a bootstrap event, skip this step.
@@ -300,6 +296,7 @@ file_map:
   first_run_check: "./tests/first-run-check.sh"
   perf_baseline:   "./artifacts/perf-baseline.json"
   gadp_scripts:    "./gadp/scripts/"
+  skills_dir:      "./gadp/skills/"
   tmp_dir:         "./tmp/"
   builder_progress: "./tmp/builder-progress.yaml"
 
@@ -324,6 +321,15 @@ focus:
   test_file:      "[test_file of that contract]"
   next_action:    "Setup in progress — complete S0-T001 through S0-T010 before beginning Sprint 1."
   blocked_on:     null
+
+sprint_0:
+  status:   not_run
+  last_step: null
+
+sprint_1:
+  status:            not_planned
+  contract_count:    0
+  first_contract_id: null
 
 phase_progress:
   project_setup: in_progress
@@ -383,7 +389,7 @@ gadp_output:
           action: "keeping GADP version (the Governor)"
         - file: "RESUME.md"
           action: "keeping GADP version"
-        - file: "intents/, outcomes/, decisions/, scripts/"
+        - file: "intents/, outcomes/, decisions/"
           action: "keeping GADP versions"
         - file: "package.json"
           action: "merging — initialiser as base, adding GADP scripts"
@@ -526,7 +532,6 @@ Merge protocol — selective copy into project root:
    - `./docs/postmortems/` — create; empty
    - `./migrations/` — create if `has_database: true` and initialiser did not
    - `./artifacts/` — create if not present
-   - `./scripts/` — already exists from S0-T001; do not overwrite
 
 5. Record what the initialiser created vs. what GADP kept in RESUME.md `session_notes`.
 
@@ -541,7 +546,7 @@ Create the full directory tree appropriate to the product type. All paths relati
 ./
 ├── AGENTS.md
 ├── RESUME.md
-├── scripts/            gadp_*.py from S0-T001
+├── gadp/               framework files — scripts, skills, config, agent prompts
 ├── intents/
 ├── outcomes/
 ├── decisions/
@@ -1320,7 +1325,7 @@ gadp_output:
     type: verification_result
     payload:
       completed_tasks:
-        - { task: "S0-T001", summary: "Mutation scripts copied · self-test passed" }
+        - { task: "S0-T001", summary: "Mutation scripts verified in gadp/scripts/ · self-test passed" }
         - { task: "S0-T002", summary: "[Framework@version] initialised · [N] packages resolved" }
         - { task: "S0-T003", summary: "Project scaffold merged · environment block populated" }
         - { task: "S0-T004", summary: "[N] packages installed · zero peer errors" }
@@ -1353,7 +1358,7 @@ Run all Sprint 0 checks in order. Update `sprint_0.last_step` in RESUME.md after
 ### S0-VERIFY-0 — GADP validation
 
 ```
-python scripts/gadp_validate.py
+python gadp/scripts/gadp_validate.py
 ```
 
 All GADP files must pass. If any fail: stop. Report which file failed and the exact field error. Do not proceed.

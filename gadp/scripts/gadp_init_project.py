@@ -28,7 +28,7 @@ It also:
     - Validates the generated files using the same checks as gadp_validate.py
 
 After running, validate by running:
-    python scripts/gadp_validate.py
+    python gadp/scripts/gadp_validate.py
 
 project-init.json structure:
 {
@@ -204,7 +204,7 @@ def generate_intent_store(cfg: dict, out_dir: Path) -> None:
     project_id = cfg.get("project_id") or str(uuid.uuid4())
 
     doc = {
-        "gadp_version": "3.1",
+        "gadp_version": "3.3",
         "project": {
             "id": project_id,
             "name": cfg["project_name"],
@@ -255,7 +255,7 @@ def generate_design_language(cfg: dict, out_dir: Path) -> None:
     tokens = design.get("tokens", {})
 
     doc = {
-        "gadp_version": "3.1",
+        "gadp_version": "3.3",
         "project_id": cfg.get("_project_id", ""),
         "source": design.get("source", "described"),
         "component_library": tokens.get("component_library", "shadcn/ui"),
@@ -305,7 +305,7 @@ def generate_contracts(cfg: dict, out_dir: Path) -> None:
     a11y_count = sum(1 for c in contracts if c.get("contract_type") == "accessibility")
 
     doc = {
-        "gadp_version": "3.1",
+        "gadp_version": "3.3",
         "project_id": project_id,
         "generated_at": now_iso(),
         "contract_count": len(contracts),
@@ -327,7 +327,7 @@ def generate_audit_log(cfg: dict, out_dir: Path) -> None:
     project_id = cfg.get("_project_id", "")
 
     doc = {
-        "gadp_version": "3.1",
+        "gadp_version": "3.3",
         "project_id": project_id,
         "events": [
             {
@@ -351,7 +351,7 @@ def generate_decisions_stub(cfg: dict, out_dir: Path) -> None:
     project_id = cfg.get("_project_id", "")
 
     doc = {
-        "gadp_version": "3.1",
+        "gadp_version": "3.3",
         "project_id": project_id,
         "generated_at": now_iso(),
         "locked": False,
@@ -373,7 +373,7 @@ def generate_invariants_stub(cfg: dict, out_dir: Path) -> None:
     project_id = cfg.get("_project_id", "")
 
     doc = {
-        "gadp_version": "3.1",
+        "gadp_version": "3.3",
         "project_id": project_id,
         "generated_at": now_iso(),
         "invariants": [],
@@ -392,7 +392,7 @@ def generate_threat_model_stub(cfg: dict, out_dir: Path) -> None:
     project_id = cfg.get("_project_id", "")
 
     doc = {
-        "gadp_version": "3.1",
+        "gadp_version": "3.3",
         "project_id": project_id,
         "generated_at": now_iso(),
         "components": [],
@@ -489,7 +489,7 @@ def run_self_validation(out_dir: Path) -> bool:
     if not validate_script.exists():
         print(
             "\nWARN: gadp_validate.py not found — skipping self-validation.\n"
-            "      Run: python scripts/gadp_validate.py manually to validate generated files."
+            "      Run: python gadp/scripts/gadp_validate.py manually to validate generated files."
         )
         return True
 
@@ -589,13 +589,13 @@ def main() -> None:
             sys.exit(1)
     else:
         print("\nWARN: Self-validation skipped (--no-validate). "
-              "Run: python scripts/gadp_validate.py manually.")
+              "Run: python gadp/scripts/gadp_validate.py manually.")
 
     print(f"\nDone. Next step:")
     print(f"  The Governor will dispatch Intent Architect and Outcome Resolver")
     print(f"  to complete the GADP files before project setup begins.")
     print(f"  Or if you have pre-built GADP files, copy them into the generated")
-    print(f"  directory structure and run: python scripts/gadp_validate.py\n")
+    print(f"  directory structure and run: python gadp/scripts/gadp_validate.py\n")
 
 
 if __name__ == "__main__":

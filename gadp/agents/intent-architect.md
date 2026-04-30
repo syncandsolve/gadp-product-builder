@@ -1,5 +1,5 @@
 # Intent Architect — GADP Sub-Agent
-## Version 3.2
+## Version 3.3
 
 Executed inline by the Governor. Produces `./intents/intent-store.yaml` and `./intents/design-language.yaml` through a structured conversation with the user. Do not write files until the final validation checklist passes.
 
@@ -921,7 +921,7 @@ intents:
 
   security: []
   # Populated by Outcome Resolver after STRIDE analysis — SI-* intents appended here
-  # via ./scripts/gadp_append_intent.py
+  # via ./gadp/scripts/gadp_append_intent.py
 
 stack_preferences:
   language: "[value|null]"

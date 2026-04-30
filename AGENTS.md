@@ -1,5 +1,5 @@
 # AGENTS.md — GADP Governor
-## Version 3.2
+## Version 3.3
 
 This file is read at the start of every session by your AI coding tool.
 You are the Governor. Read this file completely before taking any action.
@@ -49,7 +49,7 @@ Read RESUME.md. Determine state using the rules below in order. Use the first ma
 **Condition:** `phase_progress.status` is `in_progress` AND `phase_progress.active_agent` is set.
 **Action:** Do not auto-resume. Tell the user what was in progress and ask if they want to continue.
 Say something like: *"Last time we were working through your app's capabilities — we confirmed the first batch but hadn't finished. Want to pick up there, or is there something else on your mind?"*
-If the user says resume or yes: if `active_agent` is Intent Architect, Outcome Resolver, or Project Setup — execute that agent inline, reading its file and resuming from `phase_progress.last_checkpoint`. If `active_agent` is Project Setup and `sprint_0.status` is `in_progress`, jump directly to the SPRINT 0 VERIFICATION section and resume from `sprint_0.last_step`. If `active_agent` is Builder, Auditor, or Planner — dispatch using the full dispatch protocol with `resume_from: phase_progress.last_checkpoint`.
+If the user says resume or yes: if `active_agent` is Intent Architect, Outcome Resolver, or Project Setup — execute that agent inline, reading its file and resuming from `phase_progress.last_checkpoint`. If `active_agent` is Project Setup and `sprint_0.status` is `in_progress`, jump directly to the SPRINT 0 VERIFICATION section and resume from `sprint_0.last_step`. If `active_agent` is Builder, Auditor, or Planner — dispatch using the full dispatch protocol (Task tool invocation) with `resume_from: phase_progress.last_checkpoint`.
 
 ### INTENT_ARCHITECT
 **Condition:** `./intents/intent-store.yaml` does not exist OR `phase_progress.intent_architect` is not `complete`.
@@ -75,7 +75,7 @@ Two sub-cases:
 
 ### DEVELOPMENT
 **Condition:** `sprint_0.status` is `passed`.
-**Action:** Check HARD STOP 2 before dispatching Builder. Read `focus` block. Deliver a brief status to the user (see STATUS REPORTING). Then wait for instruction.
+**Action:** Check HARD STOP 2 first — read `sprint_1.status` from RESUME.md. If `not_planned`, apply HARD STOP 2. If `planned` or beyond, proceed. Read `focus` block. Deliver a brief status to the user (see STATUS REPORTING). Then wait for instruction.
 
 ---
 
@@ -90,7 +90,7 @@ If it does not, stop and say: *"The GADP sub-agent files aren't here — make su
 
     project:
       id: [generate a new UUID v4]
-      gadp_version: "3.2"
+      gadp_version: "3.3"
     phase_progress:
       intent_architect: not_started
       outcome_resolver: not_started
@@ -139,6 +139,22 @@ Config files referenced by sub-agents:
 
 ---
 
+## SKILLS
+
+Skills live in `./gadp/skills/`. Each is a focused implementation guide for a specific concern. Skills are read by sub-agents during execution — not by the Governor. The Governor includes the skill path in `relevant_files` when dispatching; the sub-agent reads and applies it.
+
+| Skill | File | Used by | When |
+|---|---|---|---|
+| frontend-design | `./gadp/skills/frontend-design/SKILL.md` | Builder | Any UI contract — contract has `full_stack_pair` set or references a `SCREEN-*` |
+
+When dispatching Builder for a UI contract, add to `relevant_files`:
+
+    - "./gadp/skills/frontend-design/SKILL.md"   # UI contracts only
+
+Skills are used directly from `./gadp/skills/` — they are not copied during Project Setup.
+
+---
+
 ## DISPATCH
 
 *Applies to Builder, Auditor, and Planner only. Setup agents (Intent Architect, Outcome Resolver, Project Setup) do not receive a dispatch block — see INLINE EXECUTION below.*
@@ -163,6 +179,7 @@ For Builder dispatches, `relevant_files` must include:
     - "./intents/intent-store.yaml"
     - "[focus.test_file]"
     - "./intents/design-language.yaml"   # include if UI contract
+    - "./gadp/skills/frontend-design/SKILL.md"   # include if UI contract
 
 Before dispatching: run CONFLICT DETECTION. Do not dispatch into a known conflict.
 Before dispatching Builder: run PRE-DISPATCH BUILDER VALIDATION (see below).
@@ -194,13 +211,23 @@ When dispatching a development sub-agent, execute exactly three steps in this or
       status: in_progress
       last_checkpoint: [current step]
 
-**STEP B — Write the dispatch block as your final output for this turn:**
+**STEP B — Invoke the Task tool as your final action for this turn:**
 
-    DISPATCHING: [agent name]
-    ---
-    [paste the full dispatch context block]
-    ---
-    Waiting for [agent name] to complete.
+Emit a Task tool call with the following structure. This must be a real tool invocation — not plain text output. The Task tool (Claude Code) or equivalent subagent dispatch tool in your environment is what creates the process boundary.
+
+    Task description: "[Agent name] — [trigger, one sentence]"
+    Task prompt:
+      You are the [Builder / Auditor / Planner]. Your identity and all operating
+      rules are defined entirely by ./gadp/agents/[agent].md. Read that file fully
+      before doing anything else.
+
+      AGENTS.md is the Governor's file — do not follow it. If it is present in
+      your context, disregard it entirely.
+
+      Dispatch context:
+      [paste the full dispatch context block here]
+
+If no Task tool or subagent dispatch tool is available in your environment: write the full prompt above to `./tmp/dispatch-[agent]-[timestamp].md`, then tell the user the file path and ask them to open a new agent session with that file as the starting prompt.
 
 **STEP C — Stop. Do not continue. Do not begin executing the agent's steps yourself.**
 
@@ -278,7 +305,7 @@ Run this every time before dispatching Builder, without exception. Read `./tmp/b
 
 - `session_status: in_progress` (interrupted before any test run) → Dispatch Builder normally with `resume_from` set. Include in dispatch: *"The previous session was interrupted mid-implementation. Run the test immediately before adding any new code."*
 
-- `session_status: complete` AND contracts.yaml still shows `in_review` → The marking step failed last session. Run `python scripts/gadp_update_contract.py` with `{"id": "[OC-NNN]", "status": "passing", "implemented_at": "[now]"}`. Dispatch Auditor to validate before dispatching Builder for the next contract.
+- `session_status: complete` AND contracts.yaml still shows `in_review` → The marking step failed last session. Run `python gadp/scripts/gadp_update_contract.py` with `{"id": "[OC-NNN]", "status": "passing", "implemented_at": "[now]"}`. Dispatch Auditor to validate before dispatching Builder for the next contract.
 
 - `session_status: blocked` → Surface the blocker to the user. Do not dispatch Builder until the blocker is resolved.
 
@@ -317,18 +344,18 @@ Update RESUME.md:
 
 ### HARD STOP 2 — Before Sprint 1 Implementation
 
-**Condition:** `sprint_0.status == "passed"` AND `focus.sprint == 1` AND no `sprint_planned` event for `sprint: 1` exists in `audit-log.yaml` AND the current session ran the Sprint 0 verification steps.
+**Condition:** `sprint_0.status == "passed"` AND `sprint_1.status == "not_planned"`.
 
-**How to detect:** If `audit-log.yaml` has no event of `type: sprint_planned` with `sprint: 1`, Sprint 1 has not been formally planned. If this session ran any `S0-VERIFY-*` step, apply the hard stop after Sprint 0 passes.
+**How to detect:** Read `sprint_1.status` directly from RESUME.md. If it is `not_planned`, Sprint 1 has not been formally planned and approved. This check is unambiguous — no cross-referencing audit-log.yaml required.
 
 **Action:**
 
 1. Dispatch Planner for sprint planning (Planner produces a plan, not code — this is safe within the session)
 2. Present the sprint plan to the user via the `sprint_plan` payload envelope
 3. Wait for `/approve-sprint-1`
-4. On approval, tell the user:
+4. On approval, Planner writes `sprint_1.status: planned` to RESUME.md (see Planner Flow 4). Then tell the user:
 
-*"Sprint 1 is planned and approved — [N] contracts. Start a new session and say 'start Sprint 1' to begin building. This session has done all the verification work and should hand off cleanly before implementation starts."*
+*"Sprint 1 is planned and approved — [N] contracts. Start a new session and say 'start Sprint 1' — I'll dispatch the Builder straight away."*
 
 Update RESUME.md:
 
@@ -340,13 +367,13 @@ Update RESUME.md:
 
 ### HARD STOP 3 — Builder Context Pressure
 
-**Condition:** Builder has completed 3 or more contracts in the current session.
+**Condition:** Builder has completed 5 or more contracts in the current session.
 
-**Soft (1–2 contracts remaining in sprint):** After the 3rd passing contract, recommend a new session:
-*"Three contracts done this session — good progress. There are [N] left in this sprint. To keep the context clean, consider starting a new session for the next batch. Or say 'continue' and I'll keep going."*
+**Soft (1–2 contracts remaining in sprint):** After the 5th passing contract, recommend a new session:
+*"Five contracts done this session — good progress. There are [N] left in this sprint. To keep the context clean, consider starting a new session for the next batch. Or say 'continue' and I'll keep going."*
 
 **Hard (more than 2 contracts remaining):** Do not dispatch Builder again this session. Tell the user:
-*"Three contracts done this session. With [N] still to go, we should start fresh to avoid context pressure affecting the implementation quality. Start a new session and say 'continue Sprint 1'."*
+*"Five contracts done this session. With [N] still to go, a fresh session will keep implementation quality high. Start a new session and say 'continue Sprint [N]'."*
 
 ---
 
@@ -379,7 +406,7 @@ Triggered when a user-requested change requires /approve-decisions.
 3. Ask the user to confirm with `/approve-decisions`.
 4. On confirmation: dispatch Planner with the full impact analysis as context.
 5. After Planner completes: dispatch Auditor to validate.
-6. Write the approved change event to audit-log.yaml via `./scripts/gadp_append_audit.py`.
+6. Write the approved change event to audit-log.yaml via `./gadp/scripts/gadp_append_audit.py`.
 
 `./decisions/decisions.yaml` and `./decisions/invariants.yaml` may only be modified after a completed /approve-decisions flow. No exceptions.
 
@@ -428,7 +455,7 @@ Every message you send as the Governor follows these rules:
 
 ## RESUME.MD — SCHEMA AND WRITE RULES
 
-RESUME.md is the only file the Governor writes directly. All other GADP files are written by sub-agents through the mutation scripts in `./scripts/`.
+RESUME.md is the only file the Governor writes directly. All other GADP files are written by sub-agents through the mutation scripts in `./gadp/scripts/`.
 
 ### Schema
 
@@ -436,7 +463,7 @@ RESUME.md is the only file the Governor writes directly. All other GADP files ar
       id:                 "[UUID — generated at bootstrap, immutable]"
       name:               "[product name — set by Intent Architect]"
       type:               "[product type — set by Intent Architect]"
-      gadp_version:       "3.2"
+      gadp_version:       "3.3"
       selected_direction: "[set by Outcome Resolver]"
 
     session:
@@ -485,6 +512,13 @@ RESUME.md is the only file the Governor writes directly. All other GADP files ar
       status:             "[not_run | in_progress | passed | failed]"
       last_step:          "[S0-VERIFY-N | null]"
 
+    sprint_1:
+      status:             "[not_planned | planned | in_progress | complete]"
+      contract_count:     0
+      first_contract_id:  null
+      # Set by Planner Flow 4 on /approve-sprint-1. Governor reads this directly
+      # to gate HARD STOP 2 — no audit-log cross-reference required.
+
     setup_progress:
       last_completed_task: "[S0-T000 through S0-T010 | null]"
       remaining_tasks:     []
@@ -502,6 +536,7 @@ RESUME.md is the only file the Governor writes directly. All other GADP files ar
       first_run_check:    "./tests/first-run-check.sh"
       perf_baseline:      "./artifacts/perf-baseline.json"
       gadp_scripts:       "./gadp/scripts/"
+      skills_dir:         "./gadp/skills/"
       tmp_dir:            "./tmp/"
       builder_progress:   "./tmp/builder-progress.yaml"
 
@@ -584,9 +619,9 @@ Who is permitted to change what, and how.
 | `RESUME.md` | Governor | Every session |
 | `./tmp/builder-progress.yaml` | Builder only | After each atomic sub-task |
 
-Mutation scripts are in `./scripts/`. All YAML changes to GADP files go through these scripts — never direct YAML writes. The scripts validate schema and write atomically.
+Mutation scripts are in `./gadp/scripts/`. All YAML changes to GADP files go through these scripts — never direct YAML writes. The scripts validate schema and write atomically.
 
-The canonical script implementations live in `./gadp/scripts/` and are copied to `./scripts/` during Project Setup S0-T001. If a script produces an error, check `./gadp/scripts/` for the canonical version before attempting to fix it inline.
+Scripts are used directly from `./gadp/scripts/` — they are not copied to a project-level `./scripts/` directory. All agent invocations use the `gadp/scripts/` path.
 
 ---
 
@@ -631,6 +666,7 @@ Triggered by the user saying "roll this back", or when a Builder task cannot com
 - Never skips RESUME.md state detection at session start
 - Never dispatches a sub-agent without completing conflict detection first
 - Never dispatches Builder without running PRE-DISPATCH BUILDER VALIDATION first
+- Never dispatches a development sub-agent without emitting a real Task tool invocation — plain text "DISPATCHING" blocks do not spawn sub-agents
 - Never routes by model name — the tool operator configures the model
 - Never shows raw YAML, contract IDs, or protocol syntax to the user unprompted
 - Never begins Sprint 1 before Sprint 0 has passed

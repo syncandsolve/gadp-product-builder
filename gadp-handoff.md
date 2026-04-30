@@ -1,5 +1,5 @@
 # GADP — Session Handoff
-## Version 3.2 — Updated after the v3.2 improvement session
+## Version 3.3 — Updated after the v3.3 improvement session
 
 ---
 
@@ -39,6 +39,9 @@ gadp/
     gadp_update_intent_status.py
     gadp_append_audit.py
     gadp_validate.py
+  skills/                         ← implementation skill guides for sub-agents (added in v3.3)
+    frontend-design/
+      SKILL.md
 ```
 
 ---
@@ -62,6 +65,18 @@ Eight specific problems identified in real-world use were analysed rigorously an
 ### v3.2 — Setup agent execution model corrected
 
 One problem identified after v3.1 shipped: the DISPATCH BOUNDARY added in v3.1 to stop the Governor from running agent steps inline did not work for setup agents, because there is no tooling in the environment that actually enforces a stop. The v3.1 fix was correct for development agents (Builder, Auditor, Planner) where a real subprocess or Task tool provides process isolation — but for setup agents it left the model in a contradictory state: instructed to stop and wait for an external response that was never going to arrive. Full details in the v3.2 section below.
+
+### v3.3 — Dispatch mechanism, resume state, session boundaries, scripts unification, skills integration
+
+Four problems identified from real-world use of v3.2 were addressed with targeted structural changes:
+
+1. **Dispatch mechanism corrected.** The DISPATCHING block was plain text — no environment ever spawned a subprocess from it. AGENTS.md DISPATCH BOUNDARY rewritten to emit a real Task tool invocation. Fallback path added: if no Task tool is available, write prompt to `./tmp/dispatch-[agent]-[timestamp].md` and surface to user. Identity confusion fixed: all three development agent files (builder.md, auditor.md, planner.md) now open with an explicit IDENTITY ASSERTION instructing the sub-agent to disregard AGENTS.md.
+
+2. **Resume state made reliable.** Hard Stop 2 detection previously required cross-referencing `audit-log.yaml` and evaluating a session-memory condition ("current session ran S0-VERIFY steps") — both unreliable in a new session. Replaced with a direct `sprint_1.status` field in RESUME.md. Planner Flow 4 writes `sprint_1.status: planned` on `/approve-sprint-1`. Governor reads it directly. No audit-log cross-reference. No session-memory conditions.
+
+3. **Session boundary count reduced.** Hard Stop 2 previously created two new-session requests in quick succession (post-verification then post-planning). Collapsed to one: sprint planning happens in the verification session, one new session after approval goes straight to Builder dispatch. Hard Stop 3 hard threshold raised from 3 to 5 contracts.
+
+4. **Scripts unification and skills integration.** The `./scripts/` copy step introduced in v3.1 was eliminated — scripts are used directly from `./gadp/scripts/` across all agent files and the Governor. Skills system introduced: `./gadp/skills/` holds implementation guides for sub-agents. `frontend-design/SKILL.md` integrated into Builder Step 1 (mandatory read for UI contracts) and Governor dispatch context (included in `relevant_files` for UI contracts). AGENTS.md gains a SKILLS section and `skills_dir` in `file_map`.
 
 ---
 

@@ -1,5 +1,5 @@
 # Outcome Resolver — GADP Sub-Agent
-## Version 3.2
+## Version 3.3
 
 Executed inline by the Governor. Reads the intent store and produces architecture decisions, outcome contracts, invariants, and an OpenAPI specification. Nothing is generated until /approve-decisions is received.
 
@@ -45,7 +45,7 @@ Do not re-run any phase that has been checkpointed. Confirmed data in RESUME.md 
 - Validate YAML structure before proceeding. If any required key is missing or malformed: stop and report which file and which key via a status_report envelope.
 - Never invent requirements. Any decision without an intent reference is flagged `[ASSUMED]`.
 - The single hard gate is `/approve-decisions`. Do not generate contracts, invariants, or OpenAPI until it is received.
-- All GADP YAML mutations go through `./scripts/gadp_*.py` — never write YAML directly.
+- All GADP YAML mutations go through `./gadp/scripts/gadp_*.py` — never write YAML directly.
 - All filesystem operations stay within the project root. Use `./tmp/` for temporary work.
 - Generate OpenAPI when `has_backend: true` AND product type is Web SaaS, API product, Internal tool, or Mobile PWA.
 - Write a checkpoint to RESUME.md after every phase that produces user-confirmed output.
@@ -554,7 +554,7 @@ gadp_output:
 
 ### SI-* Security intents
 
-For every threat with Impact Critical or High, append a security intent to `./intents/intent-store.yaml` using `python scripts/gadp_append_intent.py`:
+For every threat with Impact Critical or High, append a security intent to `./intents/intent-store.yaml` using `python gadp/scripts/gadp_append_intent.py`:
 
 ```yaml
 id: SI-001
