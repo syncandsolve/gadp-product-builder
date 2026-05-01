@@ -1,0 +1,67 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "gadp-builder": {
+      "description": "Implements GADP contracts, runs tests, handles auto-retry",
+      "mode": "subagent",
+      "model": "nvidia/qwen/qwen3-coder-480b-a35b-instruct",
+      "hidden": true,
+      "prompt": "{file:./gadp/agents/builder.md}",
+      "permission": {
+        "read": "allow",
+        "edit": "allow",
+        "bash": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "list": "allow",
+        "task": "deny",
+        "webfetch": "allow"
+      }
+    },
+    "gadp-auditor": {
+      "description": "Runs invariant checks, sprint gates, regression detection",
+      "mode": "subagent",
+      "model": "nvidia/z-ai/glm4.7",
+      "hidden": true,
+      "prompt": "{file:./gadp/agents/auditor.md}",
+      "permission": {
+        "read": "allow",
+        "edit": "deny",
+        "bash": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "list": "allow",
+        "task": "deny",
+        "webfetch": "allow"
+      }
+    },
+    "gadp-planner": {
+      "description": "Handles new features, architecture changes, /approve-decisions flows",
+      "mode": "subagent",
+      "model": "nvidia/deepseek-ai/deepseek-v4-flash",
+      "hidden": true,
+      "prompt": "{file:./gadp/agents/planner.md}",
+      "permission": {
+        "read": "allow",
+        "edit": "deny",
+        "bash": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "list": "allow",
+        "task": "deny",
+        "webfetch": "allow"
+      },
+      "additional": {
+        "reasoningEffort": "max"
+      }
+    }
+  },
+  "provider": {
+    "nvidia": {
+      "options": {
+        "baseURL": "https://integrate.api.nvidia.com/v1",
+        "apiKey": "API_KEY"
+      }
+    }
+  }
+}

@@ -138,7 +138,7 @@ For each threat reference, read the mitigation and ask: can I write a test asser
 Before writing a single file, mark the contract in_review and write the initial progress file. Both must happen before any implementation begins.
 
 ```
-python gadp/scripts/gadp_update_contract.py
+python3 gadp/scripts/gadp_update_contract.py
 input: {"id": "OC-NNN", "status": "in_review"}
 ```
 
@@ -363,7 +363,7 @@ If the root cause is an environmental issue (database not running, missing env v
 **Third failure:** Mark the contract `failing` and report to the Governor. Do not continue attempting the same approach.
 
 ```
-python gadp/scripts/gadp_update_contract.py
+python3 gadp/scripts/gadp_update_contract.py
 input: {"id": "OC-NNN", "status": "failing"}
 ```
 
@@ -394,7 +394,7 @@ Fix if straightforward. If not straightforward: log in RESUME.md `session_notes`
 ## STEP 8 — MARK CONTRACT PASSING
 
 ```
-python gadp/scripts/gadp_update_contract.py
+python3 gadp/scripts/gadp_update_contract.py
 input: {"id": "OC-NNN", "status": "passing", "implemented_at": "[current ISO-8601 timestamp]"}
 ```
 
@@ -578,7 +578,7 @@ Log the performance baseline via `gadp_append_audit.py`:
 
 ```
 echo '{"type": "audit_run", "actor": "builder", "sprint": 1, "result": "[pass|fail]", "contracts_checked": [N], "violations": []}' \
-  | python gadp/scripts/gadp_append_audit.py
+  | python3 gadp/scripts/gadp_append_audit.py
 ```
 
 ---

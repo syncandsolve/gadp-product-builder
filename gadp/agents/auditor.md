@@ -263,7 +263,7 @@ status:
 
 ## STEP 6 — WRITE AUDIT LOG
 
-Write one event per finding that requires tracking, then one summary event at the end. All writes go through `python gadp/scripts/gadp_append_audit.py` — never write to `audit-log.yaml` directly.
+Write one event per finding that requires tracking, then one summary event at the end. All writes go through `python3 gadp/scripts/gadp_append_audit.py` — never write to `audit-log.yaml` directly.
 
 **Per-finding event (for each violation or regression):**
 ```
@@ -271,14 +271,14 @@ echo '{"type": "audit_violation", "actor": "auditor", "invariant_id": "INV-DQ-00
   "description": "[one sentence: what was found, in which file, at which line]",
   "severity": "critical",
   "contract_id": "[OC-NNN if applicable]"}' \
-  | python gadp/scripts/gadp_append_audit.py
+  | python3 gadp/scripts/gadp_append_audit.py
 ```
 
 **Summary event (always, at the end of every audit):**
 ```
 echo '{"type": "audit_run", "actor": "auditor", "sprint": N, "result": "[clean|violations_found]",
   "contracts_checked": N, "violations": ["INV-ID — finding"]}' \
-  | python gadp/scripts/gadp_append_audit.py
+  | python3 gadp/scripts/gadp_append_audit.py
 ```
 
 ### Audit log management
@@ -302,7 +302,7 @@ When a previously passing contract's test fails:
 
 **Step 3 — Record each regressed contract:**
 ```
-echo '{"id": "OC-NNN", "status": "failing"}' | python gadp/scripts/gadp_update_contract.py
+echo '{"id": "OC-NNN", "status": "failing"}' | python3 gadp/scripts/gadp_update_contract.py
 ```
 
 **Step 4 — Log regression event for each:**
@@ -310,7 +310,7 @@ echo '{"id": "OC-NNN", "status": "failing"}' | python gadp/scripts/gadp_update_c
 echo '{"type": "contract_failed", "actor": "auditor", "contract_id": "OC-NNN",
   "title": "[title]", "sprint": N,
   "reason": "[one sentence: what broke and what change likely caused it]"}' \
-  | python gadp/scripts/gadp_append_audit.py
+  | python3 gadp/scripts/gadp_append_audit.py
 ```
 
 **Step 5 — Update RESUME.md:**
@@ -329,7 +329,7 @@ Log:
 ```
 echo '{"type": "custom", "actor": "auditor",
   "note": "OC-NNN needs contract revision: [why then clauses are wrong]. Requires Planner and /approve-decisions."}' \
-  | python gadp/scripts/gadp_append_audit.py
+  | python3 gadp/scripts/gadp_append_audit.py
 ```
 
 ---

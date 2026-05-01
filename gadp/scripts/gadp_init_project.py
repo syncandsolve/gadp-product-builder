@@ -6,7 +6,7 @@ This script replaces the manual writing of GADP files during project bootstrap.
 It is the FIRST script to run — before any other gadp_*.py scripts.
 
 Usage:
-    python gadp/scripts/gadp_init_project.py --config project-init.json [--out .]
+    python3 gadp/scripts/gadp_init_project.py --config project-init.json [--out .]
 
 The --config file is a JSON document produced by the Intent Architect and Outcome
 Resolver agents. Its structure is documented below.
@@ -28,7 +28,7 @@ It also:
     - Validates the generated files using the same checks as gadp_validate.py
 
 After running, validate by running:
-    python gadp/scripts/gadp_validate.py
+    python3 gadp/scripts/gadp_validate.py
 
 project-init.json structure:
 {
@@ -489,7 +489,7 @@ def run_self_validation(out_dir: Path) -> bool:
     if not validate_script.exists():
         print(
             "\nWARN: gadp_validate.py not found — skipping self-validation.\n"
-            "      Run: python gadp/scripts/gadp_validate.py manually to validate generated files."
+            "      Run: python3 gadp/scripts/gadp_validate.py manually to validate generated files."
         )
         return True
 
@@ -589,13 +589,13 @@ def main() -> None:
             sys.exit(1)
     else:
         print("\nWARN: Self-validation skipped (--no-validate). "
-              "Run: python gadp/scripts/gadp_validate.py manually.")
+              "Run: python3 gadp/scripts/gadp_validate.py manually.")
 
     print(f"\nDone. Next step:")
     print(f"  The Governor will dispatch Intent Architect and Outcome Resolver")
     print(f"  to complete the GADP files before project setup begins.")
     print(f"  Or if you have pre-built GADP files, copy them into the generated")
-    print(f"  directory structure and run: python gadp/scripts/gadp_validate.py\n")
+    print(f"  directory structure and run: python3 gadp/scripts/gadp_validate.py\n")
 
 
 if __name__ == "__main__":

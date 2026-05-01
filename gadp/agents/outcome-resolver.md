@@ -301,12 +301,12 @@ gadp_output:
           choice: "[e.g. Node.js 22 LTS]"
           why: "[plain language — cite the intent by name, not ID]"
           rejected: "[alternative and why not]"
-          invariant_generated: "[INV-A-NNN or null]"
+          invariant_generated: "[INV-A-TECH or null — use a descriptive suffix, not a number]"
         - dimension: "Database"
           choice: "[e.g. PostgreSQL 16]"
           why: "[reason]"
           rejected: "[alternative and why not]"
-          invariant_generated: "[INV-A-NNN or null]"
+          invariant_generated: "[INV-A-TECH or null — use a descriptive suffix, not a number]"
         - dimension: "Auth strategy"
           choice: "[e.g. Custom JWT in httpOnly cookie]"
           why: "[reason]"
@@ -316,7 +316,7 @@ gadp_output:
           choice: "[e.g. Prisma]"
           why: "[reason]"
           rejected: "[alternative and why not]"
-          invariant_generated: "INV-A-002"
+          invariant_generated: "INV-A-ORM"
         # ... one entry per applicable dimension
       stack_summary:
         language: "[value]"
@@ -554,7 +554,7 @@ gadp_output:
 
 ### SI-* Security intents
 
-For every threat with Impact Critical or High, append a security intent to `./intents/intent-store.yaml` using `python gadp/scripts/gadp_append_intent.py`:
+For every threat with Impact Critical or High, append a security intent to `./intents/intent-store.yaml` using `python3 gadp/scripts/gadp_append_intent.py`:
 
 ```yaml
 id: SI-001
@@ -887,7 +887,7 @@ Run before writing any file. Every item must pass.
 
 ```yaml
 ---
-gadp_version: "3.2"
+gadp_version: "3.3"
 project_id: "[from intent-store.yaml]"
 generated_at: "[ISO-8601]"
 contract_count: [N]
@@ -923,7 +923,7 @@ contracts:
 
 ```yaml
 ---
-gadp_version: "3.2"
+gadp_version: "3.3"
 project_id: "[from intent-store.yaml]"
 generated_at: "[ISO-8601]"
 locked: true
@@ -937,14 +937,14 @@ decisions:
     why: "[reason — cites intent by name]"
     cites: [QI-003, CI-007]
     rejected: "[what was considered and why it was not chosen]"
-    invariant_generated: INV-A-001
+    invariant_generated: INV-A-TECH  # use descriptive suffix — e.g. INV-A-ORM, INV-A-QUEUE, INV-A-CACHE
 ```
 
 ### ./decisions/threat-model.yaml
 
 ```yaml
 ---
-gadp_version: "3.2"
+gadp_version: "3.3"
 project_id: "[from intent-store.yaml]"
 generated_at: "[ISO-8601]"
 
@@ -1008,12 +1008,12 @@ compliance:
 
 ```yaml
 ---
-gadp_version: "3.2"
+gadp_version: "3.3"
 project_id: "[from intent-store.yaml]"
 generated_at: "[ISO-8601]"
 
 invariants:
-  - id: INV-A-001
+  - id: INV-A-TECH  # Use a descriptive suffix — e.g. INV-A-ORM, INV-A-QUEUE, INV-A-CACHE. Never use sequential numbers.
     category: architecture
     rule: "[rule statement]"
     source_decision: DEC-001

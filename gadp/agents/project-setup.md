@@ -100,7 +100,7 @@ Before running any setup task, verify that all required files exist and are stru
 
 ### Structural checks
 
-Run `python ./gadp/scripts/gadp_validate.py` first if the script is available. Then run the additional checks below that gadp_validate.py does not cover.
+Run `python3 ./gadp/scripts/gadp_validate.py` first if the script is available. Then run the additional checks below that gadp_validate.py does not cover.
 
 **intent-store.yaml:** `gadp_version` present · `project.id` valid UUID · `project.type` recognised · `has_ui`, `has_backend`, `has_database`, `has_auth` all set · `regulatory_exposure` present · at least 4 core capability intents · every CI has `scope`, `security_surface` · every `security_surface: true` CI has `security_concern_type` · every `extension`/`future` CI has `deferral_reason` and `inclusion_trigger` · at least 3 quality intents, at least 1 hard · `QI-LCP`, `QI-CLS`, `QI-INP`, `QI-BUNDLE` present if `has_ui: true` · all QI-* have `scale_trigger` and `measurement_method` · `product.solution_map` present with `severity` field · `SI-*` entries present in `intents.security` · at least 1 KPI
 
@@ -216,7 +216,7 @@ gadp_append_audit.py
 gadp_validate.py
 ```
 
-Scripts are used directly from `./gadp/scripts/` — they are not copied to a project-level `./scripts/` directory. All agent script invocations use `python gadp/scripts/gadp_*.py`.
+Scripts are used directly from `./gadp/scripts/` — they are not copied to a project-level `./scripts/` directory. All agent script invocations use `python3 gadp/scripts/gadp_*.py`.
 
 If `./gadp/scripts/` does NOT exist or any required script is missing:
 
@@ -239,7 +239,7 @@ gadp_output:
 After verifying scripts are in place, run the self-test:
 
 ```
-python gadp/scripts/gadp_validate.py
+python3 gadp/scripts/gadp_validate.py
 ```
 
 This must complete without errors on the existing GADP files. If it fails: report which file failed and the exact field error. Fix the issue before proceeding — do not work around it.
@@ -265,7 +265,7 @@ If audit-log.yaml does not already exist (gadp_init_project.py may have created 
 
 ```
 echo '{"type": "bootstrap", "actor": "project-setup", "note": "Project scaffolded by GADP Project Setup agent."}' \
-  | python gadp/scripts/gadp_append_audit.py
+  | python3 gadp/scripts/gadp_append_audit.py
 ```
 
 If audit-log.yaml already exists with a bootstrap event, skip this step.
@@ -884,19 +884,31 @@ Read `./outcomes/contracts.yaml`. For every contract with a `test_file` path, ge
 
 IMPORTANT: T-* threat IDs referenced in `contract.threat_refs` are loaded from `./decisions/threat-model.yaml` stride block — not from `decisions.yaml`. decisions.yaml contains only a `threat_model_ref` pointer.
 
+**Before generating any stub, read `environment.test_cmd` from RESUME.md** to determine the test runner. Use the correct syntax for that runner — do not mix syntax between runners.
+
+| Runner detected in `test_cmd` | Syntax to use |
+|---|---|
+| `jest` or `vitest` | `describe` / `it` / `expect` |
+| `playwright` | `test.describe` / `test` / `expect` — `describe` and `it` do not exist in Playwright |
+| `mocha` | `describe` / `it` / `expect` |
+
 Stubs must:
 - Fail before implementation — use `expect(true).toBe(false)` as the placeholder body
-- Name each `describe` block after the contract: `describe('[OC-ID] — [title]', () => {`
-- Name each `it` block after the `then` clause
+- Name each describe/test.describe block after the contract
+- Name each it/test block after the `then` clause
 - Security contracts: include negative test cases
 - UI contracts: include all 4 key state assertions plus abandonment and error recovery if defined in design-language.yaml
 
-**Functional contract stub:**
+---
+
+**Functional contract stub — Jest / Vitest:**
 ```typescript
 // tests/contracts/OC-001-[slug].test.[ext]
 // Source: ./outcomes/contracts.yaml OC-001
 // Intent: CI-001
 // Threats: T-001, T-004 — loaded from ./decisions/threat-model.yaml stride block
+
+import { describe, it, expect } from 'vitest' // or '@jest/globals' for Jest
 
 describe('OC-001 — [title]', () => {
   describe('GIVEN [precondition]', () => {
@@ -918,12 +930,43 @@ describe('OC-001 — [title]', () => {
 })
 ```
 
-**UI contract stub — all 4 key states plus abandonment and error recovery for journey screens:**
+**Functional contract stub — Playwright:**
+```typescript
+// tests/contracts/OC-001-[slug].test.[ext]
+// Source: ./outcomes/contracts.yaml OC-001
+// Intent: CI-001
+// Threats: T-001, T-004 — loaded from ./decisions/threat-model.yaml stride block
+
+import { test, expect } from '@playwright/test'
+
+test.describe('OC-001 — [title]', () => {
+  test.describe('GIVEN [precondition]', () => {
+    test('THEN [first then clause]', async ({ page }) => {
+      expect(true).toBe(false) // implement
+    })
+    test('THEN [second then clause]', async ({ page }) => {
+      expect(true).toBe(false) // implement
+    })
+  })
+
+  test.describe('[T-001] — [threat name]', () => {
+    test('THEN [security control assertion]', async ({ page }) => {
+      expect(true).toBe(false) // implement
+    })
+  })
+})
+```
+
+---
+
+**UI contract stub — Jest / Vitest (all 4 key states plus abandonment and error recovery for journey screens):**
 ```typescript
 // tests/contracts/OC-002-[slug].test.[ext]
 // Source: ./outcomes/contracts.yaml OC-002
 // Screen: SCREEN-[NNN]
 // Pair: OC-001
+
+import { describe, it, expect } from 'vitest' // or '@jest/globals' for Jest
 
 describe('OC-002 — [screen name]', () => {
   describe('Loading state', () => {
@@ -960,6 +1003,56 @@ describe('OC-002 — [screen name]', () => {
   // If screen has error_recovery in design-language.yaml:
   describe('Error recovery path', () => {
     it('THEN [recovery path available and functional]', async () => {
+      expect(true).toBe(false)
+    })
+  })
+})
+```
+
+**UI contract stub — Playwright (all 4 key states plus abandonment and error recovery for journey screens):**
+```typescript
+// tests/contracts/OC-002-[slug].test.[ext]
+// Source: ./outcomes/contracts.yaml OC-002
+// Screen: SCREEN-[NNN]
+// Pair: OC-001
+
+import { test, expect } from '@playwright/test'
+
+test.describe('OC-002 — [screen name]', () => {
+  test.describe('Loading state', () => {
+    test('THEN skeleton or spinner visible — no blank white container', async ({ page }) => {
+      expect(true).toBe(false)
+    })
+  })
+  test.describe('Empty state', () => {
+    test('THEN icon + headline + primary CTA visible — no raw "No data" text', async ({ page }) => {
+      expect(true).toBe(false)
+    })
+  })
+  test.describe('Populated state', () => {
+    test('THEN [populated state assertion from then clause]', async ({ page }) => {
+      expect(true).toBe(false)
+    })
+  })
+  test.describe('Error state', () => {
+    test('THEN [error state with recovery path — no raw error text]', async ({ page }) => {
+      expect(true).toBe(false)
+    })
+  })
+  test.describe('Design invariant INV-DQ-001', () => {
+    test('THEN uses only Tailwind theme tokens — no ad-hoc hex values', async ({ page }) => {
+      expect(true).toBe(false)
+    })
+  })
+  // If screen has abandonment_recovery in design-language.yaml:
+  test.describe('Abandonment recovery', () => {
+    test('THEN [abandonment recovery action fires on abandonment signal]', async ({ page }) => {
+      expect(true).toBe(false)
+    })
+  })
+  // If screen has error_recovery in design-language.yaml:
+  test.describe('Error recovery path', () => {
+    test('THEN [recovery path available and functional]', async ({ page }) => {
       expect(true).toBe(false)
     })
   })
@@ -1358,7 +1451,7 @@ Run all Sprint 0 checks in order. Update `sprint_0.last_step` in RESUME.md after
 ### S0-VERIFY-0 — GADP validation
 
 ```
-python gadp/scripts/gadp_validate.py
+python3 gadp/scripts/gadp_validate.py
 ```
 
 All GADP files must pass. If any fail: stop. Report which file failed and the exact field error. Do not proceed.
@@ -1384,6 +1477,8 @@ Update `sprint_0.last_step: S0-VERIFY-1`.
 ```
 
 Expected: every test fails (they are stubs — `expect(true).toBe(false)`). If any test passes unexpectedly: flag it as a potentially incorrect stub and investigate before proceeding.
+
+**If tests fail with `describe is not defined`, `it is not defined`, or similar globals-not-found errors:** this is a stub syntax mismatch, not a real test failure. The stubs were generated with Jest/Vitest syntax but the project uses Playwright (or vice versa). Return to S0-T007, regenerate the stubs using the correct runner template, and re-run this check. Do not treat syntax errors as passing or failing contract assertions.
 
 Update `sprint_0.last_step: S0-VERIFY-2`.
 

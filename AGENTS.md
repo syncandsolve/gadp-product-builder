@@ -65,9 +65,7 @@ If the user says resume or yes: if `active_agent` is Intent Architect, Outcome R
 
 ### SPRINT_0
 **Condition:** `setup_progress.last_completed_task` is `S0-T010` AND `sprint_0.status` is not `passed`.
-**Action:** Check HARD STOP 1 first. If the hard stop applies, tell the user to start a new session and stop.
-
-Otherwise, write `phase_progress.active_agent: project-setup` and `phase_progress.status: in_progress` to RESUME.md. Then execute Project Setup inline: read `./gadp/agents/project-setup.md` and jump directly to the SPRINT 0 VERIFICATION section. Do not re-run setup tasks S0-T001 through S0-T010.
+**Action:** Write `phase_progress.active_agent: project-setup` and `phase_progress.status: in_progress` to RESUME.md. Then execute Project Setup inline: read `./gadp/agents/project-setup.md` and jump directly to the SPRINT 0 VERIFICATION section. Do not re-run setup tasks S0-T001 through S0-T010. Sprint 0 verification may run in the same session that completed project setup — no session boundary is required.
 
 Two sub-cases:
 - If `sprint_0.status` is `not_run`: begin from S0-VERIFY-0.
@@ -305,7 +303,7 @@ Run this every time before dispatching Builder, without exception. Read `./tmp/b
 
 - `session_status: in_progress` (interrupted before any test run) → Dispatch Builder normally with `resume_from` set. Include in dispatch: *"The previous session was interrupted mid-implementation. Run the test immediately before adding any new code."*
 
-- `session_status: complete` AND contracts.yaml still shows `in_review` → The marking step failed last session. Run `python gadp/scripts/gadp_update_contract.py` with `{"id": "[OC-NNN]", "status": "passing", "implemented_at": "[now]"}`. Dispatch Auditor to validate before dispatching Builder for the next contract.
+- `session_status: complete` AND contracts.yaml still shows `in_review` → The marking step failed last session. Run `python3 gadp/scripts/gadp_update_contract.py` with `{"id": "[OC-NNN]", "status": "passing", "implemented_at": "[now]"}`. Dispatch Auditor to validate before dispatching Builder for the next contract.
 
 - `session_status: blocked` → Surface the blocker to the user. Do not dispatch Builder until the blocker is resolved.
 
@@ -322,25 +320,7 @@ Fresh start. Proceed with normal dispatch.
 
 ## HARD STOPS — SESSION BOUNDARIES THAT CANNOT BE CROSSED
 
-These are the only situations where the Governor explicitly refuses to dispatch an agent and instead requires the user to start a new session.
-
-### HARD STOP 1 — Before Sprint 0 Verification
-
-**Condition:** `setup_progress.last_completed_task == "S0-T010"` AND `sprint_0.status == "not_run"` AND `session_notes` contains the string `"HARD STOP: Sprint 0 verification must begin in a new session"` AND that text was written in a prior session (i.e. `phase_progress.project_setup` is already `complete` when this session opens).
-
-**Simpler detection:** If `phase_progress.project_setup` is `complete` AND `sprint_0.status` is `not_run` AND the current session has run any S0-T0xx task — the stop applies. If the session opened with `project_setup: complete` already set and has not run any setup tasks itself, the stop does not apply. When in doubt: if the user's first message this session was `hi`, `resume`, `start verification`, or similar and RESUME.md already showed `project_setup: complete` at that point, this is a resume session — do not apply the stop.
-
-**Action:** Do not begin Sprint 0 verification. Tell the user:
-
-*"Setup is complete — all ten tasks are done. Before we verify that everything works correctly, you need to start a fresh session. This one has been running through the full project setup and the context is getting heavy. Start a new session and say 'resume' to kick off Sprint 0 verification."*
-
-Update RESUME.md:
-
-    focus:
-      next_action: "Start a new session to run Sprint 0 verification."
-    session_notes: |
-      Setup complete S0-T001 through S0-T010. Sprint 0 verification is next.
-      Start a new session and say resume.
+These are the situations where the Governor explicitly requires a session boundary before proceeding.
 
 ### HARD STOP 2 — Before Sprint 1 Implementation
 
@@ -671,7 +651,6 @@ Triggered by the user saying "roll this back", or when a Builder task cannot com
 - Never shows raw YAML, contract IDs, or protocol syntax to the user unprompted
 - Never begins Sprint 1 before Sprint 0 has passed
 - Never begins Sprint 1 implementation in the same session that ran Sprint 0 verification
-- Never begins Sprint 0 verification in the same session that ran project setup tasks S0-T001 through S0-T010
 - Never re-runs setup tasks S0-T001 through S0-T010 when the SPRINT_0 state is active — jump directly to the SPRINT 0 VERIFICATION section
 - Never accepts /approve-deploy-prod without verifying all production gate conditions in the current session
 - Never leaves `phase_progress.active_agent` set after a sub-agent finishes

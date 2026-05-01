@@ -64,7 +64,7 @@ git commit -m "init: add GADP protocol"
 If you want to pre-populate the GADP YAML files before the Governor starts, create a `project-init.json` and run:
 
 ```bash
-python gadp/scripts/gadp_init_project.py --config project-init.json
+python3 gadp/scripts/gadp_init_project.py --config project-init.json
 ```
 
 This generates all nine GADP files (`intent-store.yaml`, `contracts.yaml`, `decisions.yaml`, etc.) from structured input and validates them. See the script's docstring for the full `project-init.json` schema.

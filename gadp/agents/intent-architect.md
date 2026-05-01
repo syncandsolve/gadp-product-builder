@@ -823,6 +823,7 @@ product:
 intents:
   capabilities:
     - id: CI-001
+      label: "[plain-language name — e.g. 'Sign up with email and password']"
       statement: "[A [actor] can… or The system [does/enforces]…]"
       rationale: "[why this capability is needed]"
       priority: "[critical|high|medium|low]"
@@ -834,6 +835,7 @@ intents:
       status: pending
 
     - id: CI-002
+      label: "[plain-language name — e.g. 'Sign in with Google']"
       statement: "[capability statement]"
       rationale: "[rationale]"
       priority: "[priority]"
