@@ -468,9 +468,21 @@ Merge protocol — selective copy into project root:
    - `"test"` — test runner command
    - `"test:coverage"` — test with coverage
    - `"typecheck"` — TypeScript check
-   - `"lint"` — linter command
+   - `"lint"` — linter command (see framework-version rules below)
    - `"lint:fix"` — linter with auto-fix
    - `"build"` — production build
+
+   **Framework-version-aware lint script rules — apply before writing the lint script:**
+
+   | Framework | Condition | `lint` script | `lint:fix` script |
+   |---|---|---|---|
+   | Next.js < 16 | `next lint` present in `npx next --help` output | `next lint` | `next lint --fix` |
+   | Next.js ≥ 16 | `next lint` absent from `npx next --help` output | `eslint src/` | `eslint src/ --fix` |
+   | Vite / Remix / Astro | — | `eslint src/` | `eslint src/ --fix` |
+   | NestJS | — | `eslint "{src,apps,libs,test}/**/*.ts"` | same with `--fix` |
+   | Other | — | derive from initialiser or use `eslint src/` | same with `--fix` |
+
+   Check the lint command by running `npx next --help 2>&1 | grep -i lint` for Next.js projects. If the grep returns no output, `next lint` does not exist in this version — use `eslint src/` instead.
 
 3. **.gitignore merge:** combine initialiser entries with GADP entries. GADP entries:
 
@@ -579,14 +591,28 @@ Create the full directory tree appropriate to the product type. All paths relati
 
 #### After scaffold is complete
 
-Now that the framework is initialised, derive and populate the `environment` block in RESUME.md:
+Before writing the `environment` block to RESUME.md, verify every command actually works. Do not record a command that fails.
+
+**Verification sequence — run in order:**
+
+1. **lint_cmd** — Run `npm run lint -- --help 2>&1 | head -5`. If the output contains an error (non-zero exit or "unknown command" / "no such directory"), the lint script is broken. Fix it using the framework-version-aware lint script rules from S0-T003 Step 2 above before recording `lint_cmd`. Then run `npm run lint` once to confirm zero errors on the empty/scaffolded `src/` — if it fails due to missing ESLint config, see S0-T006 for the official config init step (do not manually write `eslint.config.mjs` here).
+
+2. **typecheck_cmd** — Run `npm run typecheck 2>&1 | tail -3`. Must exit 0 or produce only "no input files" / zero errors output. If it fails, check `tsconfig.json` exists and `include` paths are correct.
+
+3. **test_cmd** — Run `npm run test -- --run 2>&1 | tail -5` (vitest) or `npm run test -- --passWithNoTests 2>&1 | tail -5` (jest). Must exit 0. If it fails, note the error in `session_notes` but do not block — test stubs are created at S0-T007.
+
+4. **start_cmd / build_cmd** — Do not run these during setup. Record the exact script value from package.json.
+
+Once all verifiable commands pass, populate the `environment` block:
+
+> **Targeted patch — read RESUME.md first, update only the `environment` key. Do not rewrite the file.**
 
 ```yaml
 environment:
   port:           "[from package.json dev script or framework default]"
-  test_cmd:       "[from package.json test script]"
-  typecheck_cmd:  "[from package.json typecheck script]"
-  lint_cmd:       "[from package.json lint script]"
+  test_cmd:       "[verified — from package.json test script]"
+  typecheck_cmd:  "[verified — from package.json typecheck script]"
+  lint_cmd:       "[verified — framework-version-aware lint command]"
   start_cmd:      "[from package.json dev script]"
   build_cmd:      "[from package.json build script]"
   db_migrate_cmd: "[from package.json db:migrate or null if no database]"
@@ -775,7 +801,56 @@ GET /metrics → Prometheus format
 
 #### Design tokens — if `has_ui: true`
 
-1. Generate `tailwind.config.[ts|js]` from `design-language.yaml`, extending (not replacing) the Tailwind base config. All color tokens map to exact hex values from design-language.yaml.
+**Official-CLI-first principle:** Before writing any config file manually, check if an official generator exists. Use the generator, then customise with project-specific values. Do not write config files from scratch when an official init command is available.
+
+| Config file | Official init command | Customise after |
+|---|---|---|
+| `eslint.config.mjs` | `npx eslint --init` (ESLint ≥ 9) or auto-created by `create-next-app` | Add project-specific rules |
+| `tailwind.config.ts` | `npx tailwindcss init` | Extend with design tokens |
+| `postcss.config.mjs` | Created by framework initialiser | Keep as-is unless missing |
+| `vitest.config.ts` | `npx vitest init` | Adjust coverage paths |
+| `.prettierrc` | Manual (no official CLI) | Write directly |
+| `bundlesize.config.json` | Manual (no official CLI) | Write directly |
+| `.lighthouserc.json` | Manual (no official CLI) | Write directly |
+
+**Step 1 — ESLint config (if not already created by initialiser)**
+
+Check if `eslint.config.mjs`, `eslint.config.js`, or `.eslintrc.*` exists:
+
+```bash
+ls eslint.config* .eslintrc* 2>/dev/null
+```
+
+If none exist:
+- For Next.js: create `eslint.config.mjs` using `eslint-config-next`'s flat config format:
+  ```bash
+  node -e "
+  const config = \`import { dirname } from 'path';
+  import { fileURLToPath } from 'url';
+  import { FlatCompat } from '@eslint/eslintrc';
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
+  const compat = new FlatCompat({ baseDirectory: __dirname });
+  const eslintConfig = [...compat.extends('next/core-web-vitals', 'next/typescript')];
+  export default eslintConfig;\`;
+  require('fs').writeFileSync('eslint.config.mjs', config);
+  "
+  ```
+- For all other frameworks: run `npx eslint --init` and answer the prompts for the project's language and framework. Do not skip this step — a missing ESLint config will cause `npm run lint` to fail.
+
+After creating the config, run `npm run lint` once to confirm it exits 0 on the current (empty/scaffolded) `src/`. If it fails, fix the config before proceeding — do not continue to Step 2.
+
+**Step 2 — Tailwind config (if not already created by initialiser)**
+
+Check if `tailwind.config.ts` or `tailwind.config.js` exists:
+
+```bash
+ls tailwind.config* 2>/dev/null
+```
+
+If none exists: run `npx tailwindcss init --ts` to generate the base config. If it already exists (created by `create-next-app` or similar), use it as the base.
+
+Customise with design tokens from `design-language.yaml`, extending (not replacing) the Tailwind base config:
 
 ```typescript
 import type { Config } from 'tailwindcss'
@@ -817,11 +892,11 @@ const config: Config = {
 export default config
 ```
 
-2. Verify completeness: `node -e "require('./tailwind.config')"` — confirm every token from design-language.yaml is present.
+Verify completeness: `node -e "require('./tailwind.config')"` — confirm every token from design-language.yaml is present.
 
-3. Verify INV-DQ-001 passes on the empty `src/` directory: run the `detection_command` from invariants.yaml. An empty `src/` must produce zero matches.
+Verify INV-DQ-001 passes on the empty `src/` directory: run the `detection_command` from invariants.yaml. An empty `src/` must produce zero matches.
 
-4. Check for `./gadp/skills/frontend-design/SKILL.md` or any `./skills/frontend-design/` path. If found: read it, extract component patterns and interaction principles, translate token references to the project's Tailwind class-based approach, write to `./docs/ui-implementation-guide.md`. If not found: skip silently.
+Check for `./gadp/skills/frontend-design/SKILL.md` or any `./skills/frontend-design/` path. If found: read it, extract component patterns and interaction principles, translate token references to the project's Tailwind class-based approach, write to `./docs/ui-implementation-guide.md`. If not found: skip silently.
 
 #### Bundle size config
 
@@ -1370,6 +1445,8 @@ Make the script executable: `chmod +x tests/first-run-check.sh`
 
 #### RESUME.md — setup completion state
 
+> **Targeted patch only — read RESUME.md first, then update only the fields below. Do not rewrite or reconstruct the file. Fields not listed here — `environment`, `file_map`, `confirmed_data`, `status`, `audit`, `recent_events`, `session` — must be preserved exactly as they are. Overwriting them is a data loss error.**
+
 Update RESUME.md to reflect setup complete:
 
 ```yaml
@@ -1573,6 +1650,8 @@ gadp_output:
 
 After producing this envelope, update RESUME.md:
 
+> **Targeted patch only — update only the fields below. Preserve all other fields, especially `environment`, `file_map`, `status`, and `confirmed_data`.**
+
 ```yaml
 sprint_0:
   status:    passed
@@ -1612,4 +1691,5 @@ In both cases `phase_progress.active_agent` is cleared and `phase_progress.statu
 - Never writes to `/tmp` or any system path — temporary work goes in `./tmp/` only
 - Never generates a new `AGENTS.md` — the one in the project root is already correct
 - Never creates model routing logic or mode-switching in `AGENTS.md`
+- Never rewrites RESUME.md in full — all updates are targeted field patches. Read the current file first, update only the listed fields, and preserve everything else. The `environment` block written at S0-T003 must survive through S0-T010 and Sprint 0 verification completion.
 - Never uses shell commands (`cat >`, `echo >`, `tee`, `python3 -c open(...).write(...)`, or any equivalent) to write file content as a workaround when a file write fails. If a task step fails to write a file, stop at that step and report the exact error. The authorised mutation scripts remain permitted.

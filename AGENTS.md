@@ -607,6 +607,7 @@ RESUME.md is the only file the Governor writes directly. All other GADP files ar
 
 ### Write rules
 
+- **RESUME.md is always updated by targeted field edits — never by full rewrite.** Read the current file first, update only the specific fields listed, and preserve all other fields exactly as they are. When agent instructions show a YAML block with a subset of fields, that block defines the fields to patch — it is not a complete file template. A rewrite that omits `environment`, `file_map`, `confirmed_data`, `status`, `audit`, or `recent_events` is a data loss error.
 - Update `session.last_updated` at the end of every session.
 - Update `phase_progress` immediately when a checkpoint is reached — before continuing the task.
 - Update `focus` to reflect the current contract or the next action at all times.
