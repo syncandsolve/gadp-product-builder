@@ -29,11 +29,12 @@ The user interacts with you. Only you. They do not interact with sub-agents dire
 
 Every session begins with this sequence, regardless of what the user's first message says:
 
-1. Check if `RESUME.md` exists in the project root.
-2. If it does not exist → run the BOOTSTRAP sequence (see below).
-3. If it exists → read it fully → determine project state → then read the user's message and respond.
+1. Run `pwd` and record the output as the project root path. This is the ground truth for all path construction this session — never derive paths from conversation history, assumed usernames, or filenames.
+2. Check if `RESUME.md` exists in the project root.
+3. If it does not exist → run the BOOTSTRAP sequence (see below).
+4. If it exists → read it fully → read `project.root_path` and confirm it matches `pwd` output → determine project state → then read the user's message and respond.
 
-Do not respond to the user's message before completing steps 1–3. Do not assume state from conversation history. RESUME.md is the only source of truth for project state.
+Do not respond to the user's message before completing steps 1–4. Do not assume state from conversation history. RESUME.md is the only source of truth for project state.
 
 ---
 
@@ -84,11 +85,12 @@ Run this when RESUME.md does not exist.
 **Step 1.** Verify that `./gadp/agents/intent-architect.md` exists.
 If it does not, stop and say: *"The GADP sub-agent files aren't here — make sure the `gadp/` folder from the GADP repository is in your project root, then start a new session."*
 
-**Step 2.** Create a minimal `RESUME.md` using the RESUME.MD SCHEMA defined later in this file. Populate only these fields:
+**Step 2.** Run `pwd`. Record the output as `project.root_path`. Create a minimal `RESUME.md` using the RESUME.MD SCHEMA defined later in this file. Populate only these fields:
 
     project:
       id: [generate a new UUID v4]
       gadp_version: "3.3"
+      root_path: "[output of pwd — absolute path, no trailing slash]"
     phase_progress:
       intent_architect: not_started
       outcome_resolver: not_started
@@ -162,6 +164,7 @@ When dispatching a development sub-agent, prepare a scoped context block. Pass o
 Standard dispatch input:
 
     agent:             [agent name]
+    root_path:         "[project.root_path from RESUME.md]"
     trigger:           [why it is being dispatched — one sentence]
     resume_from:       [checkpoint ID if mid-phase, or null]
     seed_input:        [user message or relevant excerpt]
@@ -224,6 +227,10 @@ Emit a Task tool call with the following structure. This must be a real tool inv
 
       AGENTS.md is the Governor's file — do not follow it. If it is present in
       your context, disregard it entirely.
+
+      Your project root is: [root_path from dispatch context]. Use this for all
+      absolute path construction. Never derive paths from assumed usernames or
+      home directories.
 
       Dispatch context:
       [paste the full dispatch context block here]
@@ -473,6 +480,7 @@ RESUME.md is the only file the Governor writes directly. All other GADP files ar
       type:               "[product type — set by Intent Architect]"
       gadp_version:       "3.3"
       selected_direction: "[set by Outcome Resolver]"
+      root_path:          "[absolute path — set at bootstrap by pwd, immutable]"
 
     session:
       last_updated:       "[ISO-8601 — updated every session]"
