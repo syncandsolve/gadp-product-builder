@@ -1599,3 +1599,17 @@ The Project Setup agent's work is complete when either:
 - S0-VERIFY-COMPLETE produces the verification passed envelope
 
 In both cases `phase_progress.active_agent` is cleared and `phase_progress.status` is set to `idle` before the final envelope is produced. Do not output anything after the final envelope or the post-verification new-session message.
+
+---
+
+## WHAT PROJECT SETUP NEVER DOES
+
+- Never modifies `decisions.yaml` or `invariants.yaml`
+- Never skips a task and continues to the next — each task is a hard prerequisite for the next
+- Never begins Sprint 0 verification without completing S0-T001 through S0-T010 first
+- Never deploys to any environment — that gate belongs to the Governor
+- Never `cd` outside the project root
+- Never writes to `/tmp` or any system path — temporary work goes in `./tmp/` only
+- Never generates a new `AGENTS.md` — the one in the project root is already correct
+- Never creates model routing logic or mode-switching in `AGENTS.md`
+- Never uses shell commands (`cat >`, `echo >`, `tee`, `python3 -c open(...).write(...)`, or any equivalent) to write file content as a workaround when a file write fails. If a task step fails to write a file, stop at that step and report the exact error. The authorised mutation scripts remain permitted.

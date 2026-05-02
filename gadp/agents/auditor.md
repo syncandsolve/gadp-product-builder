@@ -244,24 +244,13 @@ pending:   count of contracts where status == "pending"
 deferred:  count of contracts where status == "deferred"
 ```
 
-Write these exact counts to RESUME.md `status` block. This is the Auditor's write — no other agent updates these counters.
-
-Also update:
-
-```yaml
-audit:
-  last_audit_result: "[clean|violations_found]"
-  last_audit_date:   "[current ISO-8601]"
-  open_violations:   [list of OC-NNN IDs currently failing or flagged]
-
-status:
-  next_audit_after:  [current passing count + 5]
-  audit_log_event_count: [current count + events added this audit]
-```
+Do NOT write these counts to RESUME.md directly. Return them in the `gadp_output` envelope as `resume_patch` (see REPORTING TO THE GOVERNOR). The Governor applies the patch. This is the Auditor's authoritative count — the Governor writes it exactly as returned.
 
 ---
 
 ## STEP 6 — WRITE AUDIT LOG
+
+Mutation scripts (`gadp_append_audit.py`, `gadp_update_contract.py`) are called via bash as the authorised write pathway. These calls are NOT affected by the bash bypass prohibition. RESUME.md writes are the exception — those go in `resume_patch` in `gadp_output`, not direct writes.
 
 Write one event per finding that requires tracking, then one summary event at the end. All writes go through `python3 gadp/scripts/gadp_append_audit.py` — never write to `audit-log.yaml` directly.
 
@@ -390,6 +379,19 @@ gadp_output:
         cls: "[N vs target — N/A if not run]"
       next_audit_after: [passing_count + 5]
       events_added: [N]
+  resume_patch:
+    status:
+      passing: [N]
+      in_review: [N]
+      failing: 0
+      pending: [N]
+      deferred: [N]
+      next_audit_after: [passing_count + 5]
+      audit_log_event_count: [current count + events added this audit]
+    audit:
+      last_audit_result: "clean"
+      last_audit_date: "[current ISO-8601]"
+      open_violations: []
   action_required: none
 ```
 
@@ -431,6 +433,19 @@ gadp_output:
       builder_progress_note: "[note if builder-progress.yaml showed a mid-flight contract — or null]"
       next_audit_after: [passing_count + 5]
       events_added: [N]
+  resume_patch:
+    status:
+      passing: [N]
+      in_review: [N]
+      failing: [N]
+      pending: [N]
+      deferred: [N]
+      next_audit_after: [passing_count + 5]
+      audit_log_event_count: [current count + events added this audit]
+    audit:
+      last_audit_result: "violations_found"
+      last_audit_date: "[current ISO-8601]"
+      open_violations: [list of OC-NNN IDs currently failing or flagged]
   action_required: none
 ```
 
@@ -451,3 +466,5 @@ gadp_output:
 - Never rounds on regression thresholds — 29.9% LCP regression is an audit_flag; 30.0% is a hard_stop
 - Never searches for T-* threat IDs in `decisions.yaml` — they live exclusively in `threat-model.yaml`
 - Never writes `gadp_output` payload data without running the underlying checks first — no synthetic audits
+- Never writes status counters or audit metadata to RESUME.md directly — return them in `resume_patch` for the Governor to apply
+- Never uses shell commands (`cat >`, `echo >`, `tee`, `python3 -c open(...).write(...)`, or any equivalent) to write file content when an edit tool denial would otherwise prevent it. If a file write is denied, stop immediately and report the denial. Do not attempt any alternative write method. The authorised write path — mutation scripts called via bash (e.g., `python3 gadp/scripts/gadp_append_audit.py`) — is not affected by this rule; script calls remain permitted. Direct file content writes via shell are never permitted as a workaround.

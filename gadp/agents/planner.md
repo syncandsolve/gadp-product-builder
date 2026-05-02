@@ -354,8 +354,6 @@ Read:
 
 ### Step 3 — Present the plan
 
-**Note on post-Sprint-0 planning:** If `sprint_0.status` just passed in this session and you are planning Sprint 1, write `sprint_1.status: planned` to RESUME.md on `/approve-sprint-1` (Step 4 above). The Governor reads this directly to gate the session transition — no additional action needed from you.
-
 ```yaml
 gadp_output:
   agent: planner
@@ -383,59 +381,14 @@ gadp_output:
             - { title: "[contract title]", type: "security" }
       done_means: "[passes locally|staging green|production green] — all [N] contracts passing[, sprint1_chain walkable end to end if Sprint 1]"
       approve_command: "/approve-sprint-[N]"
+      contracts_to_assign:
+        - { id: "[OC-NNN]", title: "[title]", sprint: N }
+        # one entry per contract whose sprint field needs updating
   action_required: approve
   prompt: "You can ask to move something, add something missing, or say /approve-sprint-[N]."
 ```
 
-Wait for `/approve-sprint-[N]` before updating any contract sprint assignments.
-
-### Step 4 — On /approve-sprint-[N]
-
-1. For any contracts whose `sprint` field needs updating: update via `gadp_update_contract.py`.
-2. Append to `audit-log.yaml` via `gadp_append_audit.py`:
-   ```
-   {"type": "sprint_planned", "actor": "planner", "sprint": N,
-    "contract_count": N,
-    "goal": "[goal]"}
-   ```
-3. **If this is Sprint 1:** Write `sprint_1` block to RESUME.md:
-   ```yaml
-   sprint_1:
-     status: planned
-     contract_count: [N]
-     first_contract_id: "[OC-NNN — the first contract Builder should implement]"
-   ```
-4. Update RESUME.md:
-   ```yaml
-   focus:
-     sprint: N
-     contract_id: "[first contract — failing contracts first]"
-     contract_title: "[title]"
-     next_action: "Sprint [N] approved. Begin with [first contract title]."
-   session_notes: |
-     Sprint [N] planned — [N] contracts. [Theme summary.] First: [title].
-   ```
-
-Report to the Governor:
-
-```yaml
-gadp_output:
-  agent: planner
-  checkpoint: FLOW4-COMPLETE
-  narrative: |
-    Sprint [N] approved — [N] contracts. First up: [title].
-    [If Sprint 1: sprint_1.status has been written to RESUME.md as "planned". Governor should tell the user to start a new session to begin Sprint 1 implementation — Builder will be dispatched immediately on session start.]
-  data:
-    type: sprint_plan
-    payload:
-      sprint: N
-      contract_count: N
-      first_contract:
-        id: "[OC-NNN]"
-        title: "[title]"
-      session_boundary_required: [true if Sprint 1 after Sprint 0 verification, otherwise false]
-  action_required: none
-```
+After presenting this plan, Planner's work is complete. The Governor handles all writes on `/approve-sprint-[N]` — contract sprint assignments, audit log, and RESUME.md. Planner does not execute a Step 4. Do not write to any file post-proposal.
 
 ---
 
@@ -595,3 +548,6 @@ Append to `audit-log.yaml`:
 - Never creates a contract without an `intent_ref` — every contract must be grounded in an intent
 - Never searches for T-* threat IDs in `decisions.yaml` — they live in `threat-model.yaml`
 - Never dispatches Builder — the Governor owns that call after receiving the sprint plan
+- Never writes `sprint_1.status`, `focus`, or `session_notes` to RESUME.md after `/approve-sprint-[N]` — that is the Governor's responsibility
+- Never dispatches itself or issues a Task tool call — Planner stops after returning `gadp_output`
+- Never uses shell commands (`cat >`, `echo >`, `tee`, `python3 -c open(...).write(...)`, or any equivalent) to write file content when an edit tool denial would otherwise prevent it. If a file write is denied, stop immediately and report the denial. Do not attempt any alternative write method. The authorised write path — mutation scripts called via bash (e.g., `python3 gadp/scripts/gadp_update_contract.py`) — is not affected by this rule; script calls remain permitted. Direct file content writes via shell are never permitted as a workaround.

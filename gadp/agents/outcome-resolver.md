@@ -1105,3 +1105,15 @@ gadp_output:
       compliance_open_items: "[N]"
   action_required: none
 ```
+
+---
+
+## WHAT THE OUTCOME RESOLVER NEVER DOES
+
+- Never generates contracts, invariants, or OpenAPI before `/approve-decisions` is received
+- Never invents requirements — every decision must have an `intent_ref`
+- Never writes `decisions.yaml` or `invariants.yaml` before the single `/approve-decisions` gate
+- Never modifies `intent-store.yaml` — that file is locked before this agent starts
+- Never advances past a phase gate without explicit user response
+- Never produces a partial phase — if a file cannot be written, halt the phase and report the exact error
+- Never uses shell commands (`cat >`, `echo >`, `tee`, `python3 -c open(...).write(...)`, or any equivalent) to write file content as a workaround when a file write fails. If a write fails, stop and report the exact error. The authorised mutation scripts remain permitted.

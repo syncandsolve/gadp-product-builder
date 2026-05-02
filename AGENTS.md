@@ -185,6 +185,9 @@ Before beginning inline execution of a setup-phase agent: write `phase_progress.
 
 When the sub-agent completes or checkpoints: clear `phase_progress.active_agent`, update `phase_progress.status`, and update `phase_progress.last_checkpoint`.
 
+**When a sub-agent returns `gadp_output` with `action_required: approve` and the user approves:**
+The Governor handles all resulting writes directly. It does NOT dispatch the sub-agent again. The sub-agent's output already contains everything needed (in `payload`, `file_writes`, `resume_patch`). The Governor executes `file_writes`, applies `resume_patch`, and communicates the result.
+
 ### Parallel dispatch
 
 The following Project Setup tasks are independent and may be dispatched in parallel when the tool supports parallel sub-agents:
@@ -277,6 +280,11 @@ Every sub-agent output that requires user review follows this envelope format:
                 architecture_decisions | api_design | entity_model | data_lifecycle |
                 threat_summary | sprint_plan | verification_result | status_report]"
         payload: [structured YAML]
+      file_writes:                          # Optional — present when agent returns writes for Governor to execute
+        - cmd: "[gadp_append_audit | gadp_update_contract | gadp_append_contract | gadp_append_intent]"
+          payload: [JSON object to pipe to the script]
+      resume_patch:                         # Optional — present when agent returns RESUME.md updates
+        [key]: [value]                      # Direct RESUME.md schema path assignments
       action_required: "[confirm | approve | choose | none]"
       prompt: "[Single question or action — one sentence. Omit if action_required: none]"
 
@@ -287,6 +295,8 @@ Every sub-agent output that requires user review follows this envelope format:
 - If `action_required` is `confirm`: ask the user to confirm or correct before writing the checkpoint and continuing
 - If `action_required` is `approve`: present the `/approve-decisions` gate — do not proceed without it
 - If `action_required` is `choose`: present the options and wait for a selection
+- If `file_writes` is present: execute each entry in order. For each entry, pipe the payload as JSON to the named script: `echo '[payload JSON]' | python3 gadp/scripts/[cmd].py`. Execute all `file_writes` before responding to the user. If any script call fails, stop and tell the user exactly which command failed and with what error.
+- If `resume_patch` is present: write each key-value pair to RESUME.md immediately after executing any `file_writes`. Do not modify or interpret the values. Apply `resume_patch` before responding to the user.
 - Never paste raw YAML blocks or protocol syntax at the user unless they ask for it specifically
 
 ---
@@ -333,17 +343,35 @@ These are the situations where the Governor explicitly requires a session bounda
 1. Dispatch Planner for sprint planning (Planner produces a plan, not code — this is safe within the session)
 2. Present the sprint plan to the user via the `sprint_plan` payload envelope
 3. Wait for `/approve-sprint-1`
-4. On approval, Planner writes `sprint_1.status: planned` to RESUME.md (see Planner Flow 4). Then tell the user:
+4. On `/approve-sprint-1`, the Governor writes `sprint_1` directly to RESUME.md — no second Planner dispatch.
+   Extract from the FLOW4-PLAN `gadp_output` payload:
+   - `contract_count`, `first_contract.id`, `first_contract.title`, `goal`, `contracts_to_assign`
+
+   Execute in order:
+
+   a. For each entry in `contracts_to_assign`:
+      `echo '{"id": "[OC-NNN]", "sprint": 1}' | python3 gadp/scripts/gadp_update_contract.py`
+
+   b. `echo '{"type": "sprint_planned", "actor": "governor", "sprint": 1, "contract_count": N, "goal": "[goal]"}' | python3 gadp/scripts/gadp_append_audit.py`
+
+   c. Write to RESUME.md:
+
+          sprint_1:
+            status: planned
+            contract_count: [N]
+            first_contract_id: "[OC-NNN]"
+          focus:
+            sprint: 1
+            contract_id: "[first_contract_id]"
+            contract_title: "[title]"
+            next_action: "Sprint 1 approved. Begin with [first contract title]."
+          session_notes: |
+            Sprint 0 passed. Sprint 1 planned and approved — [N] contracts.
+            First contract: [title]. Start a new session.
+
+   Then tell the user:
 
 *"Sprint 1 is planned and approved — [N] contracts. Start a new session and say 'start Sprint 1' — I'll dispatch the Builder straight away."*
-
-Update RESUME.md:
-
-    focus:
-      next_action: "Start a new session to begin Sprint 1 implementation."
-    session_notes: |
-      Sprint 0 passed. Sprint 1 planned and approved — [N] contracts.
-      First contract: [title]. Start a new session.
 
 ### HARD STOP 3 — Builder Context Pressure
 
@@ -596,7 +624,8 @@ Who is permitted to change what, and how.
 | `invariants.yaml` | Planner only | /approve-decisions always |
 | `threat-model.yaml` | Outcome Resolver or Planner | No approval required |
 | `audit-log.yaml` | Auditor only, via `gadp_append_audit.py` | Append-only — never modify |
-| `RESUME.md` | Governor | Every session |
+| `RESUME.md` | Governor (directly) and via `resume_patch` from Auditor/Planner/Builder sub-agents | Every session |
+| `RESUME.md` status block | Governor (applying Auditor's `resume_patch`) | After every Auditor output |
 | `./tmp/builder-progress.yaml` | Builder only | After each atomic sub-task |
 
 Mutation scripts are in `./gadp/scripts/`. All YAML changes to GADP files go through these scripts — never direct YAML writes. The scripts validate schema and write atomically.
@@ -660,3 +689,4 @@ Triggered by the user saying "roll this back", or when a Builder task cannot com
 - Never stops and waits between setup steps as if waiting for an external process — the only pause in setup is waiting for user confirmation at a gadp_output envelope
 - Never writes `./tmp/builder-progress.yaml` — that is Builder's exclusive write
 - Never reformats or summarises `gadp_output.payload` data — pass it to the TUI as-is
+- Never dispatches Planner a second time to handle `/approve-sprint-[N]` — the Governor writes `sprint_1`, `focus`, and `session_notes` directly from the FLOW4-PLAN payload

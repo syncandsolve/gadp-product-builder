@@ -71,6 +71,25 @@ This generates all nine GADP files (`intent-store.yaml`, `contracts.yaml`, `deci
 
 You can also reuse a `project-init.json` from a previous project as a starting point — edit it, run `gadp_init_project.py`, and the new project has a clean scaffold.
 
+**3a. (OpenCode only) Configure agent routing**
+
+If you are using OpenCode, the `opencode.json` in the repository root configures sub-agent model routing and permissions. Edit it to set your preferred models and API provider:
+
+```json
+{
+  "provider": {
+    "nvidia": {
+      "options": {
+        "baseURL": "https://integrate.api.nvidia.com/v1",
+        "apiKey": "YOUR_API_KEY"
+      }
+    }
+  }
+}
+```
+
+See `OPENCODE_SETUP.md` for model selection guidance and full configuration options. If you are using Claude Code or another tool, skip this step — `AGENTS.md` is the entry point regardless of environment.
+
 **4. Open the project in your AI coding tool**
 
 Claude Code, opencode, or any tool that reads `AGENTS.md`.

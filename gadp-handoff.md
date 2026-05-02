@@ -19,6 +19,8 @@ The core idea: every feature is a **contract** (a precise, machine-testable defi
 AGENTS.md                         ← Governor instructions (entry point)
 README.md                         ← Plain-English overview
 gadp-handoff.md                   ← This file — design rationale and improvement history
+opencode.json                     ← Agent routing, model assignment, permissions (added v3.3)
+OPENCODE_SETUP.md                 ← OpenCode configuration guide (added v3.3)
 gadp/
   agents/
     intent-architect.md
@@ -77,6 +79,8 @@ Four problems identified from real-world use of v3.2 were addressed with targete
 3. **Session boundary count reduced.** Hard Stop 2 previously created two new-session requests in quick succession (post-verification then post-planning). Collapsed to one: sprint planning happens in the verification session, one new session after approval goes straight to Builder dispatch. Hard Stop 3 hard threshold raised from 3 to 5 contracts.
 
 4. **Scripts unification and skills integration.** The `./scripts/` copy step introduced in v3.1 was eliminated — scripts are used directly from `./gadp/scripts/` across all agent files and the Governor. Skills system introduced: `./gadp/skills/` holds implementation guides for sub-agents. `frontend-design/SKILL.md` integrated into Builder Step 1 (mandatory read for UI contracts) and Governor dispatch context (included in `relevant_files` for UI contracts). AGENTS.md gains a SKILLS section and `skills_dir` in `file_map`.
+
+5. **OpenCode agent routing and permission model.** `opencode.json` added to the repository root. Defines three hidden sub-agents (`gadp-builder`, `gadp-auditor`, `gadp-planner`) with per-agent model assignment, permission scoping, and `task: deny` to prevent sub-agents spawning sub-agents. Auditor and Planner receive `edit: deny` — consistent with the read-only architecture described above. Builder receives `edit: allow` — it must write application source files. All three receive `bash: allow` — mutation scripts are called via bash. The Governor (running as the primary model) has no opencode.json restrictions — it is the environment operator.
 
 ---
 

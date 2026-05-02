@@ -429,33 +429,9 @@ Do not update `status` counters in RESUME.md. That is the Auditor's responsibili
 
 ---
 
-## STEP 9 — UPDATE RESUME.MD AND REPORT
+## STEP 9 — REPORT TO THE GOVERNOR
 
-Update RESUME.md focus to point to the next contract:
-
-```yaml
-focus:
-  sprint: [same or next sprint]
-  contract_id: "[next pending contract id]"
-  contract_title: "[next contract title]"
-  intent_ref: "[next contract's intent_ref]"
-  contract_path: "./outcomes/contracts.yaml"
-  threat_refs: [next contract's threat_refs]
-  implementation_target: []
-  test_file: "[next contract's test_file]"
-  next_action: "Ready to begin [next contract title]."
-  blocked_on: null
-```
-
-Add a concise entry to `recent_events`:
-```yaml
-- type: contract_passing
-  timestamp: "[ISO-8601]"
-  contract_id: "[OC-NNN]"
-  note: "[contract title] — implemented and passing."
-```
-
-Prune `recent_events` to the last 5 entries. Overwrite `session_notes` with a one-paragraph summary of what was implemented, any notable decisions or edge cases, and what is next.
+Do not write to RESUME.md directly. All RESUME.md updates go in `resume_patch` for the Governor to apply.
 
 **Report to the Governor:**
 
@@ -483,6 +459,25 @@ gadp_output:
       next_contract:
         id: "[OC-NNN]"
         title: "[title]"
+  resume_patch:
+    focus:
+      sprint: [same or next sprint]
+      contract_id: "[next pending contract id]"
+      contract_title: "[next contract title]"
+      intent_ref: "[next contract's intent_ref]"
+      contract_path: "./outcomes/contracts.yaml"
+      threat_refs: [next contract's threat_refs]
+      implementation_target: []
+      test_file: "[next contract's test_file]"
+      next_action: "Ready to begin [next contract title]."
+      blocked_on: null
+    recent_events:
+      - type: contract_passing
+        timestamp: "[ISO-8601]"
+        contract_id: "[OC-NNN]"
+        note: "[contract title] — implemented and passing."
+    session_notes: |
+      [One-paragraph summary of what was implemented, any notable decisions or edge cases, and what is next.]
   action_required: none
 ```
 
@@ -603,3 +598,5 @@ echo '{"type": "audit_run", "actor": "builder", "sprint": 1, "result": "[pass|fa
 - Never searches for T-* threat IDs in `decisions.yaml` — they live in `threat-model.yaml`
 - Never skips writing `./tmp/builder-progress.yaml` after an atomic sub-task
 - Never batches progress file writes — write immediately after each sub-task completes
+- Never writes `focus`, `recent_events`, or `session_notes` to RESUME.md directly — these go in `resume_patch` in `gadp_output`
+- Never uses shell commands (`cat >`, `echo >`, `tee`, `python3 -c open(...).write(...)`, or any equivalent) to write file content when an edit tool denial would otherwise prevent it. If a file write is denied, stop immediately and report the denial. Do not attempt any alternative write method. The authorised write path — mutation scripts called via bash (e.g., `python3 gadp/scripts/gadp_update_contract.py`) — is not affected by this rule; script calls remain permitted. Direct file content writes via shell are never permitted as a workaround.
