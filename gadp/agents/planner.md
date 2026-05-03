@@ -381,6 +381,14 @@ gadp_output:
             - { title: "[contract title]", type: "security" }
       done_means: "[passes locally|staging green|production green] — all [N] contracts passing[, sprint1_chain walkable end to end if Sprint 1]"
       approve_command: "/approve-sprint-[N]"
+      phases:
+        - phase: 1
+          title: "[e.g. Shopping Journey]"
+          contracts: ["[OC-NNN]", "[OC-NNN]"]
+        - phase: 2
+          title: "[e.g. Auth + Security Layer]"
+          contracts: ["[OC-NNN]", "[OC-NNN]"]
+        # one entry per phase, contracts listed in implementation order
       contracts_to_assign:
         - { id: "[OC-NNN]", title: "[title]", sprint: N }
         # one entry per contract whose sprint field needs updating

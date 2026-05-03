@@ -86,6 +86,14 @@ If the project has no `.env` file: stop immediately. Tell the Governor what vari
 
 Read precisely what you need. Do not load entire files when a targeted read will do.
 
+**First — read sprint phase plan from RESUME.md:**
+Read `sprint_[N].phases` from RESUME.md. Find which phase the current contract (`focus.contract_id`) belongs to. This tells you:
+- What phase you are in and its title
+- The full ordered contract list for this phase — what came before and what comes next
+- Which contracts are in later phases — do not implement anything that belongs to a later phase while implementing the current one
+
+If `sprint_[N].phases` is empty or absent, proceed without it — phase context is optional, not a blocker.
+
 **Always load:**
 - The single contract entry from `focus.contract_path` — filter by `focus.contract_id`
 - The test stub at `focus.test_file` — read the full file, understand what you are being asked to prove
@@ -139,7 +147,7 @@ Before writing a single file, mark the contract in_review and write the initial 
 
 ```
 python3 gadp/scripts/gadp_update_contract.py
-input: {"id": "OC-NNN", "status": "in_review"}
+input: {"id": "OC-NNN", "status": "in_review", "description": "[contract title]"}
 ```
 
 Write `./tmp/builder-progress.yaml` with initial state:
@@ -364,7 +372,7 @@ If the root cause is an environmental issue (database not running, missing env v
 
 ```
 python3 gadp/scripts/gadp_update_contract.py
-input: {"id": "OC-NNN", "status": "failing"}
+input: {"id": "OC-NNN", "status": "failing", "description": "[contract title]"}
 ```
 
 Update progress file: `session_status: blocked`, `retry_count: 3`.
@@ -395,7 +403,7 @@ Fix if straightforward. If not straightforward: log in RESUME.md `session_notes`
 
 ```
 python3 gadp/scripts/gadp_update_contract.py
-input: {"id": "OC-NNN", "status": "passing", "implemented_at": "[current ISO-8601 timestamp]"}
+input: {"id": "OC-NNN", "status": "passing", "description": "[contract title]", "implemented_at": "[current ISO-8601 timestamp]"}
 ```
 
 Never write to contracts.yaml directly. Never mark passing before the test passes. Never mark passing before hard_stop invariants clear.

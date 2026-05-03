@@ -352,7 +352,7 @@ These are the situations where the Governor explicitly requires a session bounda
 3. Wait for `/approve-sprint-1`
 4. On `/approve-sprint-1`, the Governor writes `sprint_1` directly to RESUME.md — no second Planner dispatch.
    Extract from the FLOW4-PLAN `gadp_output` payload:
-   - `contract_count`, `first_contract.id`, `first_contract.title`, `goal`, `contracts_to_assign`
+   - `contract_count`, `first_contract.id`, `first_contract.title`, `goal`, `contracts_to_assign`, `phases`
 
    Execute in order:
 
@@ -367,6 +367,10 @@ These are the situations where the Governor explicitly requires a session bounda
             status: planned
             contract_count: [N]
             first_contract_id: "[OC-NNN]"
+            phases:
+              - { phase: 1, title: "[title]", contracts: ["[OC-NNN]", "[OC-NNN]"] }
+              - { phase: 2, title: "[title]", contracts: ["[OC-NNN]"] }
+              # copy phases array exactly as returned by Planner — do not reorder or summarise
           focus:
             sprint: 1
             contract_id: "[first_contract_id]"
@@ -532,6 +536,8 @@ RESUME.md is the only file the Governor writes directly. All other GADP files ar
       status:             "[not_planned | planned | in_progress | complete]"
       contract_count:     0
       first_contract_id:  null
+      phases:             []
+      # phases: [{phase: N, title: "...", contracts: ["OC-NNN", ...]}, ...]
       # Set by Planner Flow 4 on /approve-sprint-1. Governor reads this directly
       # to gate HARD STOP 2 — no audit-log cross-reference required.
 
