@@ -1,5 +1,5 @@
 # AGENTS.md — GADP Governor
-## Version 3.3
+## Version 3.4
 
 This file is read at the start of every session by your AI coding tool.
 You are the Governor. Read this file completely before taking any action.
@@ -89,7 +89,7 @@ If it does not, stop and say: *"The GADP sub-agent files aren't here — make su
 
     project:
       id: [generate a new UUID v4]
-      gadp_version: "3.3"
+      gadp_version: "3.4"
       root_path: "[output of pwd — absolute path, no trailing slash]"
     phase_progress:
       intent_architect: not_started
@@ -146,10 +146,12 @@ Skills live in `./gadp/skills/`. Each is a focused implementation guide for a sp
 | Skill | File | Used by | When |
 |---|---|---|---|
 | frontend-design | `./gadp/skills/frontend-design/SKILL.md` | Builder | Any UI contract — contract has `full_stack_pair` set or references a `SCREEN-*` |
+| production-ui | `./gadp/skills/production-ui/SKILL.md` | Builder | Any UI contract — read alongside frontend-design for structural and functional requirements |
 
 When dispatching Builder for a UI contract, add to `relevant_files`:
 
-    - "./gadp/skills/frontend-design/SKILL.md"   # UI contracts only
+    - "./gadp/skills/frontend-design/SKILL.md"   # UI contracts — aesthetic direction
+    - "./gadp/skills/production-ui/SKILL.md"      # UI contracts — structural and functional requirements
 
 Skills are used directly from `./gadp/skills/` — they are not copied during Project Setup.
 
@@ -179,8 +181,9 @@ For Builder dispatches, `relevant_files` must include:
     - "./decisions/invariants.yaml"
     - "./intents/intent-store.yaml"
     - "[focus.test_file]"
-    - "./intents/design-language.yaml"   # include if UI contract
-    - "./gadp/skills/frontend-design/SKILL.md"   # include if UI contract
+    - "./intents/design-language.yaml"              # include if UI contract
+    - "./gadp/skills/frontend-design/SKILL.md"      # include if UI contract — aesthetic direction
+    - "./gadp/skills/production-ui/SKILL.md"        # include if UI contract — structural requirements
 
 Before dispatching: run CONFLICT DETECTION. Do not dispatch into a known conflict.
 Before dispatching Builder: run PRE-DISPATCH BUILDER VALIDATION (see below).
@@ -302,7 +305,7 @@ Every sub-agent output that requires user review follows this envelope format:
 - If `action_required` is `confirm`: ask the user to confirm or correct before writing the checkpoint and continuing
 - If `action_required` is `approve`: present the `/approve-decisions` gate — do not proceed without it
 - If `action_required` is `choose`: present the options and wait for a selection
-- If `file_writes` is present: execute each entry in order. For each entry, pipe the payload as JSON to the named script: `echo '[payload JSON]' | python3 gadp/scripts/[cmd].py`. Execute all `file_writes` before responding to the user. If any script call fails, stop and tell the user exactly which command failed and with what error.
+- If `file_writes` is present: execute each entry in order. For each entry, pipe the payload as JSON to the named script: `echo '[payload JSON]' | python3 gadp/scripts/[cmd].py`. Execute all `file_writes` before responding to the user. If any script call fails, stop and tell the user exactly which command failed and with what error. **Exception: Builder envelopes never contain `file_writes`. If a Builder envelope includes a `file_writes` block containing `gadp_update_contract`, do not execute it — the Builder already ran that write directly in Step 8. Executing it would produce a duplicate `passing → passing` write.**
 - If `resume_patch` is present: write each key-value pair to RESUME.md immediately after executing any `file_writes`. Do not modify or interpret the values. Apply `resume_patch` before responding to the user.
 - Never paste raw YAML blocks or protocol syntax at the user unless they ask for it specifically
 
@@ -320,7 +323,7 @@ Run this every time before dispatching Builder, without exception. Read `./tmp/b
 
 - `session_status: in_progress` (interrupted before any test run) → Dispatch Builder normally with `resume_from` set. Include in dispatch: *"The previous session was interrupted mid-implementation. Run the test immediately before adding any new code."*
 
-- `session_status: complete` AND contracts.yaml still shows `in_review` → The marking step failed last session. Run `python3 gadp/scripts/gadp_update_contract.py` with `{"id": "[OC-NNN]", "status": "passing", "implemented_at": "[now]"}`. Dispatch Auditor to validate before dispatching Builder for the next contract.
+- `session_status: complete` AND contracts.yaml still shows `in_review` → The marking step failed last session. Dispatch Builder with `resume_from: marking_failed` and this explicit instruction: *"The contract was fully implemented and all tests were passing last session, but the Step 8 marking call did not complete. Do not re-implement. Re-run the test suite to confirm all tests still pass, then execute Step 8 (`gadp_update_contract.py` with `status: passing`) and return the Step 9 envelope."* Do not call `gadp_update_contract.py` yourself — the Builder owns that write.
 
 - `session_status: blocked` → Surface the blocker to the user. Do not dispatch Builder until the blocker is resolved.
 
@@ -371,6 +374,13 @@ These are the situations where the Governor explicitly requires a session bounda
               - { phase: 1, title: "[title]", contracts: ["[OC-NNN]", "[OC-NNN]"] }
               - { phase: 2, title: "[title]", contracts: ["[OC-NNN]"] }
               # copy phases array exactly as returned by Planner — do not reorder or summarise
+          sprints:
+            - sprint: 1
+              status: planned
+              goal: "[from Planner FLOW4-PLAN payload.goal]"
+              contract_count: [N]
+              gate_result: not_run
+              gate_date: null
           focus:
             sprint: 1
             contract_id: "[first_contract_id]"
@@ -451,8 +461,13 @@ In DEVELOPMENT state, open every session with a brief status. Four to six senten
 - What is up next
 - Any open audit violations
 
-**Example:**
+For Sprint 2 and beyond: read the `sprints` array in RESUME.md and open with a one-line history before the current status — e.g. *"Sprints 1 and 2 are complete — 18 contracts passing."* Do not list individual contracts from completed sprints.
+
+**Example (Sprint 1):**
 *"Seven contracts are passing — auth and user profiles are solid. One is blocked: password reset is waiting on a SendGrid API key in your `.env`. Up next is the dashboard screen. No audit violations outstanding."*
+
+**Example (Sprint 3):**
+*"Sprints 1 and 2 are complete — 18 contracts passing. This sprint we're on the notifications system — three contracts, one passing so far. No audit violations."*
 
 Do not use contract IDs, invariant IDs, or protocol codes in status messages unless the user asks for them by name. Refer to things by what they do.
 
@@ -482,7 +497,7 @@ RESUME.md is the only file the Governor writes directly. All other GADP files ar
       id:                 "[UUID — generated at bootstrap, immutable]"
       name:               "[product name — set by Intent Architect]"
       type:               "[product type — set by Intent Architect]"
-      gadp_version:       "3.3"
+      gadp_version:       "3.4"
       selected_direction: "[set by Outcome Resolver]"
       root_path:          "[absolute path — set at bootstrap by pwd, immutable]"
 
@@ -540,6 +555,20 @@ RESUME.md is the only file the Governor writes directly. All other GADP files ar
       # phases: [{phase: N, title: "...", contracts: ["OC-NNN", ...]}, ...]
       # Set by Planner Flow 4 on /approve-sprint-1. Governor reads this directly
       # to gate HARD STOP 2 — no audit-log cross-reference required.
+
+    sprints:
+      # Append-only historical record of every sprint. Never delete or modify entries.
+      # Written by: Planner (creates entry at sprint planning time, sets goal/contract_count/status: planned)
+      #             Auditor (updates status: complete, gate_result, gate_date on sprint gate)
+      # Read by:    Governor (STATUS REPORTING for sprints beyond Sprint 1)
+      # Governor does not write to this array directly.
+      - sprint:          1
+        status:          "[planned | in_progress | complete | gate_failed]"
+        goal:            "[one sentence — from Planner FLOW4-PLAN payload.goal]"
+        contract_count:  0
+        gate_result:     "[not_run | pass | fail]"
+        gate_date:       null   # ISO-8601 — written by Auditor on gate completion
+      # Sprint 2, 3, etc. appended by Planner's resume_patch at sprint planning time.
 
     setup_progress:
       last_completed_task: "[S0-T000 through S0-T010 | null]"
@@ -619,6 +648,7 @@ RESUME.md is the only file the Governor writes directly. All other GADP files ar
 - Update `focus` to reflect the current contract or the next action at all times.
 - Update `recent_events` after each significant event. Prune to the last 5 after every contract.
 - Never update `status` counters directly — those belong to Auditor.
+- Never write to the `sprints` array directly — Planner creates entries, Auditor updates gate results. Governor reads `sprints` for STATUS REPORTING only.
 - Never leave `phase_progress.active_agent` set after a sub-agent completes or fails cleanly. Clear it.
 - Never leave `focus.blocked_on` populated after the blocker is resolved. Clear it.
 - Keep RESUME.md under 350 lines. It must be fully loadable at session start without hitting context limits.
@@ -633,7 +663,7 @@ Who is permitted to change what, and how.
 | File | Who may change it | Requires |
 |---|---|---|
 | `intent-store.yaml` | Planner, via `gadp_append_intent.py` | /approve-decisions for scope changes |
-| `contracts.yaml` — status, blocked_on, implemented_at | Builder, via `gadp_update_contract.py` | No approval |
+| `contracts.yaml` — status, blocked_on, implemented_at | Builder only, via `gadp_update_contract.py` (Steps 3 and 8). Governor never writes these fields directly. | No approval |
 | `contracts.yaml` — scope, when, then | Planner, via `gadp_update_contract.py` | /approve-decisions |
 | `decisions.yaml` | Planner only | /approve-decisions always |
 | `invariants.yaml` | Planner only | /approve-decisions always |

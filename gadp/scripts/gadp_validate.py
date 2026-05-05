@@ -332,6 +332,62 @@ def validate_contracts(path: Path, result: FileResult, project_id: str | None) -
                 if bad:
                     result.err(f"{ctx}: all 'threat_refs' must start with 'T-'. Bad: {bad}")
 
+        depends_on = contract.get("depends_on")
+        if depends_on is not None:
+            if not isinstance(depends_on, list):
+                result.err(f"{ctx}: 'depends_on' must be a list")
+            else:
+                bad = [
+                    d for d in depends_on
+                    if not (isinstance(d, str) and d.startswith("OC-")
+                            and d[3:].isdigit() and len(d) >= 5)
+                ]
+                if bad:
+                    result.err(f"{ctx}: all 'depends_on' entries must match OC-NNN format. Bad: {bad}")
+                if oc_id and oc_id in depends_on:
+                    result.err(f"{ctx}: 'depends_on' must not contain the contract's own ID ({oc_id!r})")
+
+    # depends_on cross-reference and cycle detection
+    dep_map: dict[str, list[str]] = {}
+    for contract in contracts:
+        cid = contract.get("id")
+        deps = contract.get("depends_on") or []
+        if not isinstance(deps, list) or not cid:
+            continue
+        dep_map[cid] = [d for d in deps if isinstance(d, str)]
+        for dep_id in dep_map[cid]:
+            if dep_id not in oc_ids:
+                result.err(
+                    f"Contract {cid}: depends_on references {dep_id!r} "
+                    f"which does not exist in contracts.yaml"
+                )
+
+    # Cycle detection — DFS over the dependency graph
+    visited: set[str] = set()
+    in_stack: set[str] = set()
+
+    def has_cycle(node: str) -> bool:
+        if node in in_stack:
+            return True
+        if node in visited:
+            return False
+        visited.add(node)
+        in_stack.add(node)
+        for neighbour in dep_map.get(node, []):
+            if has_cycle(neighbour):
+                return True
+        in_stack.discard(node)
+        return False
+
+    for node in list(dep_map):
+        if node not in visited and has_cycle(node):
+            result.err(
+                f"Circular dependency detected in depends_on graph involving {node!r}. "
+                f"Sprint planning cannot order contracts with circular dependencies — "
+                f"review the depends_on chain and remove the cycle."
+            )
+            break  # one cycle error is sufficient; the chain will be obvious from the graph
+
     # Declared count consistency
     declared = doc.get("contract_count")
     if declared is not None and declared != len(contracts):

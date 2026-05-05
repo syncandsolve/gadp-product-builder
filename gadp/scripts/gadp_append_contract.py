@@ -21,7 +21,8 @@ Input (JSON on stdin) — all fields required unless marked optional:
         "threat_refs":   ["T-001", "T-004"],          # optional — list of T-* IDs
         "full_stack_pair": "OC-030",                  # optional — paired UI contract ID
         "blocked_on":    null,                        # optional
-        "implemented_at": null                        # optional
+        "implemented_at": null,                       # optional
+        "depends_on":    ["OC-027"]                   # optional — OC-NNN IDs that must be implemented first
     }
 
 Exit codes:
@@ -48,7 +49,7 @@ REQUIRED_FIELDS = {
     "scope", "given", "when", "then", "test_file", "status"
 }
 
-OPTIONAL_FIELDS = {"threat_refs", "full_stack_pair", "blocked_on", "implemented_at"}
+OPTIONAL_FIELDS = {"threat_refs", "full_stack_pair", "blocked_on", "implemented_at", "depends_on"}
 
 VALID_CONTRACT_TYPES = {"functional", "security", "performance", "deletion", "accessibility"}
 VALID_SCOPES = {"core", "extension", "future"}
@@ -184,6 +185,22 @@ def validate_contract(data: dict) -> list[str]:
     if pair is not None and not (isinstance(pair, str) and pair.startswith("OC-")):
         errors.append(f"'full_stack_pair' must be an OC-NNN ID. Got: {pair!r}")
 
+    # depends_on must be a list of OC-NNN IDs
+    # Cross-reference against contracts.yaml is performed by gadp_validate.py, not here.
+    depends_on = data.get("depends_on")
+    if depends_on is not None:
+        if not isinstance(depends_on, list):
+            errors.append(f"'depends_on' must be a list. Got: {type(depends_on).__name__}")
+        else:
+            bad = [
+                d for d in depends_on
+                if not (isinstance(d, str) and d.startswith("OC-") and d[3:].isdigit() and len(d) >= 5)
+            ]
+            if bad:
+                errors.append(f"All 'depends_on' entries must match OC-NNN format. Bad values: {bad}")
+            if data.get("id") and data["id"] in depends_on:
+                errors.append(f"'depends_on' must not contain the contract's own ID ({data['id']}).")
+
     return errors
 
 
@@ -236,6 +253,7 @@ def main() -> None:
     data.setdefault("full_stack_pair", None)
     data.setdefault("blocked_on", None)
     data.setdefault("implemented_at", None)
+    data.setdefault("depends_on", [])
 
     # Remove None values from top-level (yaml.safe_dump writes them as 'null' which is fine,
     # but explicit None keys add noise — keep them so schema is consistent)

@@ -1,5 +1,5 @@
 # GADP — Governed Agentic Development Protocol
-## Version 3.3
+## Version 3.4
 
 GADP is a protocol for building software with an AI coding tool that keeps the project governed, resumable, and production-ready across every session.
 
@@ -67,7 +67,7 @@ If you want to pre-populate the GADP YAML files before the Governor starts, crea
 python3 gadp/scripts/gadp_init_project.py --config project-init.json
 ```
 
-This generates all nine GADP files (`intent-store.yaml`, `contracts.yaml`, `decisions.yaml`, etc.) from structured input and validates them. See the script's docstring for the full `project-init.json` schema.
+This generates all nine GADP files (`intent-store.yaml`, `contracts.yaml`, `decisions.yaml`, etc.) from structured input and validates them. The full `project-init.json` schema is documented in `gadp/config/project-init-schema.json` — open it in any JSON Schema-aware editor for field descriptions and examples.
 
 You can also reuse a `project-init.json` from a previous project as a starting point — edit it, run `gadp_init_project.py`, and the new project has a clean scaffold.
 
@@ -122,15 +122,12 @@ The Governor reads `RESUME.md` and tells you what is in progress and what is nex
 
 ## Session boundaries
 
-GADP enforces three hard stops where you must start a new session before continuing. These exist to prevent context pressure from degrading output quality.
+GADP enforces two hard stops where you must start a new session before continuing. These exist to prevent context pressure from degrading output quality.
 
-**Hard Stop 1 — Before Sprint 0 verification**
-After project setup completes (all ten tasks done), the Governor tells you to start a new session before running Sprint 0 verification. Setup and verification must not share a session.
-
-**Hard Stop 2 — Before Sprint 1 implementation**
+**Hard Stop 1 — Before Sprint 1 implementation**
 After Sprint 0 verification passes, the Planner produces a sprint plan and you approve it. The Governor then tells you to start a new session before any Builder dispatch. Verification and implementation must not share a session.
 
-**Hard Stop 3 — Builder context pressure**
+**Hard Stop 2 — Builder context pressure**
 After three contracts pass in a single session, the Governor recommends (and eventually requires) starting a new session for the remaining contracts.
 
 These stops are enforced by the Governor reading `RESUME.md` state — they are not advisory notes. The Governor will not dispatch the next agent across a session boundary.
@@ -161,7 +158,7 @@ Project Setup scaffolds the framework, installs dependencies, wires CI/CD, and g
 
 > *"Seven contracts are passing — auth and user profiles are solid. One is blocked: password reset is waiting on a SendGrid API key in your .env. Up next is the dashboard screen."*
 
-The Builder implements contracts one at a time. When a test fails it diagnoses before retrying. If you quit mid-session, the Governor reads `./tmp/builder-progress.yaml` on the next session to determine exactly where to resume — down to the individual sub-task.
+The Builder implements contracts one at a time. When a test fails it diagnoses before retrying. When a contract passes, the Builder marks it `passing` directly via `gadp_update_contract.py` — the Governor does not touch contract status. If you quit mid-session, the Governor reads `./tmp/builder-progress.yaml` on the next session to determine exactly where to resume — down to the individual sub-task.
 
 ---
 
@@ -182,7 +179,7 @@ The Builder implements contracts one at a time. When a test fails it diagnoses b
 | `RESUME.md` | Project state, current sprint, next action | Governor |
 | `intents/intent-store.yaml` | Capability intents, quality targets, KPIs, constraints | Intent Architect |
 | `intents/design-language.yaml` | Design tokens, screens, journey, interaction rules | Intent Architect |
-| `outcomes/contracts.yaml` | Every contract — trigger, definition of done, status | Outcome Resolver, Builder |
+| `outcomes/contracts.yaml` | Every contract — trigger, definition of done, status | Outcome Resolver (generates), Builder (marks status) |
 | `outcomes/audit-log.yaml` | Append-only record of every significant event | Auditor |
 | `decisions/decisions.yaml` | Locked architecture decisions with rationale | Outcome Resolver |
 | `decisions/threat-model.yaml` | STRIDE threat analysis, mitigations, compliance | Outcome Resolver |
@@ -247,7 +244,7 @@ All GADP YAML file changes go through the scripts in `./gadp/scripts/` — never
 | Script | What it does |
 |---|---|
 | `gadp_init_project.py` | Generates all initial GADP YAML files for a new project from a config file |
-| `gadp_update_contract.py` | Updates mutable fields on a single contract (status, blocked_on, implemented_at) |
+| `gadp_update_contract.py` | Updates mutable fields on a single contract (status, blocked_on, implemented_at). Status is written by Builder only — Governor never calls this script for contract status. |
 | `gadp_append_contract.py` | Appends a new OC-* contract with full schema validation |
 | `gadp_append_intent.py` | Appends a new CI-*, SI-*, or QI-* intent with type-specific validation |
 | `gadp_update_intent_status.py` | Updates the status field of a single intent |
@@ -272,7 +269,9 @@ Sprint 1 ends only when a real person can complete the primary user journey with
 
 Before Sprint 2 begins, the Auditor runs the sprint gate: every contract passing, every invariant clean, performance baseline taken, First Run Standard verified. If anything fails, Sprint 2 does not begin.
 
-Each sprint plan is proposed by the Planner, grouped by theme, and approved by you before any implementation starts.
+Each sprint plan is proposed by the Planner, grouped by theme, and approved by you before any implementation starts. Within each sprint phase, contracts are ordered by their `depends_on` dependencies — if OC-B requires a table that OC-A creates, OC-A is always implemented first. The Planner detects and surfaces circular dependencies before the plan is finalised.
+
+GADP tracks every sprint's goal, contract count, and gate result in `RESUME.md` throughout the project. At any point the Governor can tell you which sprints are complete, what each covered, and whether any gate was retried.
 
 ---
 
@@ -301,7 +300,7 @@ These are Sprint 1 scope when the exposure exists.
 
 GADP works with any AI coding tool that reads an `AGENTS.md` file in the project root:
 
-- Claude Code (recommended)
+- Claude Code (recommended) — see `OPENCODE_SETUP.md` Agent Write Permissions section for how Planner writes differ from OpenCode
 - opencode
 - Any tool following the `AGENTS.md` convention
 
@@ -317,7 +316,8 @@ GADP includes implementation skill guides in `./gadp/skills/`. Each skill is a f
 
 | Skill | Used by | When |
 |---|---|---|
-| `frontend-design` | Builder | Any UI contract (full_stack_pair set or SCREEN-* reference) |
+| `frontend-design` | Builder | Any UI contract — aesthetic direction, visual identity, design language |
+| `production-ui` | Builder | Any UI contract — four mandatory states, token compliance, a11y, responsive, state wiring |
 
 Skills are versioned with the GADP repository and used directly — no copying required.
 

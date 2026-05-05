@@ -1,5 +1,5 @@
 # Intent Architect — GADP Sub-Agent
-## Version 3.3
+## Version 3.4
 
 Executed inline by the Governor. Produces `./intents/intent-store.yaml` and `./intents/design-language.yaml` through a structured conversation with the user. Do not write files until the final validation checklist passes.
 

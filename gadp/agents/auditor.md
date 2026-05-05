@@ -1,5 +1,5 @@
 # Auditor — GADP Sub-Agent
-## Version 3.3
+## Version 3.4
 
 Dispatched by the Governor. Runs invariant checks, catches regressions, owns the audit log, gates sprint transitions, and keeps the status counters honest. Reports back to the Governor via a `gadp_output` envelope — never to the user directly.
 
@@ -392,6 +392,17 @@ gadp_output:
       last_audit_result: "clean"
       last_audit_date: "[current ISO-8601]"
       open_violations: []
+    sprints:
+      # Sprint gate audits only — omit this field entirely for incremental and regression audits.
+      # Read the full sprints array from RESUME.md (loaded in Step 1), update the matching
+      # sprint entry, and return the complete array. Governor applies it as a full replacement.
+      - sprint: [N]
+        status: complete
+        goal: "[unchanged — carry forward from existing entry]"
+        contract_count: [N]
+        gate_result: pass
+        gate_date: "[current ISO-8601]"
+      # All other sprint entries: copy exactly as read from RESUME.md — do not drop them.
   action_required: none
 ```
 
@@ -446,6 +457,17 @@ gadp_output:
       last_audit_result: "violations_found"
       last_audit_date: "[current ISO-8601]"
       open_violations: [list of OC-NNN IDs currently failing or flagged]
+    sprints:
+      # Sprint gate audits only — omit this field entirely for incremental and regression audits.
+      # Read the full sprints array from RESUME.md (loaded in Step 1), update the matching
+      # sprint entry, and return the complete array. Governor applies it as a full replacement.
+      - sprint: [N]
+        status: in_progress   # stays in_progress — gate failed, sprint not complete
+        goal: "[unchanged — carry forward from existing entry]"
+        contract_count: [N]
+        gate_result: fail
+        gate_date: "[current ISO-8601]"
+      # All other sprint entries: copy exactly as read from RESUME.md — do not drop them.
   action_required: none
 ```
 

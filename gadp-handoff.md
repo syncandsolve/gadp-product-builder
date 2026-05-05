@@ -1,5 +1,5 @@
 # GADP — Session Handoff
-## Version 3.3 — Updated after the v3.3 improvement session
+## Version 3.4 — Updated after the v3.4 improvement session
 
 ---
 
@@ -44,6 +44,16 @@ gadp/
   skills/                         ← implementation skill guides for sub-agents (added in v3.3)
     frontend-design/
       SKILL.md
+    production-ui/                ← structural requirements skill (added in v3.4)
+      SKILL.md
+gadp/config/
+  project-init-schema.json       ← JSON Schema for project-init.json (added in v3.4)
+.github/
+  workflows/
+    gadp-ci.yml                  ← CI for GADP repo scripts (added in v3.4)
+tests/
+  fixtures/                      ← minimal valid GADP YAML fixtures for CI (added in v3.4)
+requirements.txt                 ← pyyaml for CI (added in v3.4)
 ```
 
 ---
@@ -81,6 +91,8 @@ Four problems identified from real-world use of v3.2 were addressed with targete
 4. **Scripts unification and skills integration.** The `./scripts/` copy step introduced in v3.1 was eliminated — scripts are used directly from `./gadp/scripts/` across all agent files and the Governor. Skills system introduced: `./gadp/skills/` holds implementation guides for sub-agents. `frontend-design/SKILL.md` integrated into Builder Step 1 (mandatory read for UI contracts) and Governor dispatch context (included in `relevant_files` for UI contracts). AGENTS.md gains a SKILLS section and `skills_dir` in `file_map`.
 
 5. **OpenCode agent routing and permission model.** `opencode.json` added to the repository root. Defines three hidden sub-agents (`gadp-builder`, `gadp-auditor`, `gadp-planner`) with per-agent model assignment, permission scoping, and `task: deny` to prevent sub-agents spawning sub-agents. Auditor and Planner receive `edit: deny` — consistent with the read-only architecture described above. Builder receives `edit: allow` — it must write application source files. All three receive `bash: allow` — mutation scripts are called via bash. The Governor (running as the primary model) has no opencode.json restrictions — it is the environment operator.
+
+   > **v3.4 clarification:** The `edit: deny` configuration for Auditor and Planner is specific to OpenCode. In OpenCode, writes go through mutation scripts via bash — `edit: deny` is a mechanical enforcement of this. In Claude Code, `opencode.json` is not read. The Planner uses the edit tool directly for governance files (`decisions.yaml`, `invariants.yaml`, contracts). If `edit: deny` is applied to the Planner in Claude Code, every `/approve-decisions` flow will fail. The authority model in Claude Code is instruction-enforced (via `planner.md`) rather than permission-enforced. See OPENCODE_SETUP.md — Agent Write Permissions section.
 
 ---
 
@@ -156,6 +168,8 @@ The structured payload types force the model to write each field explicitly — 
 
 Project Setup S0-T001 now copies them: `cp ./gadp/scripts/gadp_*.py ./scripts/`. If `./gadp/scripts/` is missing, the agent checks for pre-generated scripts at the project root and moves them. If neither is found, it hard stops with a clear message.
 
+> **v3.3 update:** The copy step was eliminated in v3.3. Scripts are used directly from `./gadp/scripts/` by all agents. S0-T001 now only verifies their presence — no copying is done. The `./scripts/` project-level directory is never created.
+
 A new script `gadp_init_project.py` was added — it generates all nine GADP YAML files (intent-store, design-language, contracts, audit-log, decisions, invariants, threat-model, openapi, diagram stub) from a `project-init.json` config file. This directly addresses the "can I place pre-generated scripts at the root and use them for a new project" question — yes, combined with a config file, you can bootstrap a new project without running the full Governor + Intent Architect flow.
 
 The canonical scripts are precise and tested:
@@ -209,6 +223,8 @@ A resuming agent reads `derived_context` before re-deriving anything. If an entr
 **What changed.** Three enforced hard stops added to AGENTS.md:
 
 **HARD STOP 1 — Before Sprint 0 verification:** If `setup_progress.last_completed_task == S0-T010` AND `sprint_0.status == not_run` AND the current session ran any S0-T0xx task, the Governor refuses to dispatch Sprint 0 verification. It tells the user to start a new session and updates `focus.next_action`. If the session opened fresh into an already-completed setup state, the stop does not apply.
+
+> **v3.3 update:** Hard Stop 1 was eliminated in v3.3. Sprint 0 verification now runs in the same session as project setup — no session boundary is required between them. The `project-setup.md` S0-T010 task continues inline to SPRINT 0 VERIFICATION after outputting its summary envelope. Only Hard Stops 2 and 3 (renumbered to 1 and 2 in v3.4) remain active. See v3.3 changes — item 3 (session boundary count reduced).
 
 **HARD STOP 2 — Before Sprint 1 implementation:** If Sprint 0 just passed AND the current session ran Sprint 0 verification steps, the Planner produces the sprint plan and the Governor waits for `/approve-sprint-1`. On approval, it tells the user to start a new session before Builder is dispatched.
 
@@ -301,10 +317,10 @@ These were established in v3.0 and remain unchanged:
 Added in v3.1:
 
 - **`./tmp/builder-progress.yaml` is not gitignored.** It must survive session ends. The `tmp/*` + `!tmp/builder-progress.yaml` gitignore pattern is the correct implementation.
-- **Canonical scripts live in `./gadp/scripts/`.** They are copied to `./scripts/` at S0-T001. If a script errors, check the canonical version before attempting inline fixes.
+- **Canonical scripts live in `./gadp/scripts/`.** They are used directly from that location by all agents — no copying to `./scripts/` is done. *(The copy step existed briefly in v3.1 and was eliminated in v3.3.)* If a script errors, check the canonical version before attempting inline fixes.
 - **`derived_context` in RESUME.md is append-only.** New entries are added, existing entries are never overwritten. A resuming agent reads it before re-deriving anything.
 - **`gadp_output` envelopes are the only user-facing output format.** Agents never produce freeform presentation blocks. The Governor never reformats payload data — it passes it to the TUI as-is.
-- **Session boundaries are enforced by the Governor, not advisory.** The three hard stops are state-machine checks, not notes in a prompt.
+- **Session boundaries are enforced by the Governor, not advisory.** Two hard stops remain: before Sprint 1 implementation (HARD STOP 1, formerly Hard Stop 2) and Builder context pressure (HARD STOP 2, formerly Hard Stop 3). Hard Stop 1 (before Sprint 0 verification) was eliminated in v3.3.
 
 Added in v3.2:
 
@@ -348,6 +364,160 @@ These were discussed or noted but not addressed. Good candidates for the next ro
 5. **Explicit disagreement flow** — currently when a user wants to change a derived decision, the path is: user describes change → Governor detects conflict → Planner does impact analysis → `/approve-decisions`. The Governor's CONFLICT DETECTION section handles this, but a dedicated "I disagree with X" flow that prompts the user through the Planner more smoothly would reduce friction.
 
 6. **`project-init.json` schema documentation** — the schema is documented in `gadp_init_project.py`'s docstring, but a standalone `gadp/config/project-init-schema.json` with JSON Schema validation would be cleaner and allow IDE autocompletion when writing the config file.
+
+---
+
+## What was changed in v3.4
+
+### Audit findings addressed
+
+v3.4 addresses findings from a formal protocol audit. Eight categories of change, grouped by priority.
+
+---
+
+### Fix A1: Hard Stop 1 contradiction between files
+
+**What was wrong.** `AGENTS.md` v3.3 STATE DETECTION said Sprint 0 verification may run in the same session as setup — no session boundary required. `project-setup.md` S0-T010 still said "HARD STOP — do not proceed further in this session." Two files directly contradicting each other at a critical transition point. The `AGENTS.md` instruction was correct (Hard Stop 1 was intentionally eliminated in v3.3); `project-setup.md` had not been updated.
+
+**What changed.** `project-setup.md` S0-T010 updated in three places: `focus.next_action` now says "Sprint 0 verification runs now in this session", `session_notes` removes the three HARD STOP lines, the envelope narrative and `next` payload updated to "Continuing inline to S0-VERIFY-0", the trailing "Do not output anything after this envelope" replaced with "continue directly to the SPRINT 0 VERIFICATION section below. Do not stop." The COMPLETION section updated: S0-T010 is a transition point, not a completion point — the single completion point is S0-VERIFY-COMPLETE.
+
+**Files changed:** `gadp/agents/project-setup.md` (S0-T010 step — four surgical replacements, COMPLETION section — rewritten).
+
+---
+
+### Fix A2: Planner write model undocumented by environment
+
+**What was wrong.** `opencode.json` `edit: deny` for the Planner only works in OpenCode (writes go through mutation scripts via bash). In Claude Code, `opencode.json` is not read — the Planner uses the edit tool directly. This was not documented anywhere. A user following the repository into Claude Code would hit Planner write failures on every `/approve-decisions` flow with no explanation.
+
+**What changed.** `OPENCODE_SETUP.md` gains a new "Agent Write Permissions" section explaining the OpenCode `edit: deny` + `bash: allow` pattern, why it works in OpenCode, why it does not apply in Claude Code, an explicit ⚠️ warning about the failure mode, and a summary table covering all three harness types. The Claude Code entry in the Harness Compatibility section updated to surface the exception in Key Differences. Example 1 (cost-optimized) annotated with a warning about flash models for governance agents. `README.md` Compatible Tools section updated to reference OPENCODE_SETUP.md Agent Write Permissions.
+
+**Files changed:** `OPENCODE_SETUP.md` (ToC — two entries, new Agent Write Permissions section, Claude Code harness Key Differences updated, Example 1 annotated), `README.md` (Compatible Tools — Claude Code entry).
+
+---
+
+### Fix B1: Multi-sprint state not modelled in RESUME.md
+
+**What was wrong.** `RESUME.md` had a `sprint_1` structured field but nothing for sprints 2+. After Sprint 1, there was no machine-readable record of which sprints were complete, what their goals were, or whether gates had passed. A Session 4 project had no sprint history to read.
+
+**What changed.** A `sprints` append-only array added to the RESUME.md schema in `AGENTS.md`. Planner's FLOW4-PLAN envelope gains a `resume_patch` block that creates the sprint entry at planning time (`status: planned`, `gate_result: not_run`). Auditor's sprint gate `resume_patch` updates the matching entry on gate pass (`status: complete`, `gate_result: pass`, `gate_date: now`) or fail (`status: in_progress`, `gate_result: fail`). Governor seeds Sprint 1's `sprints` entry in the HARD STOP 2 write block alongside `sprint_1.*`. Governor STATUS REPORTING updated: for Sprint 2+, opens with a one-line sprint history read from the `sprints` array.
+
+**Files changed:** `AGENTS.md` (RESUME.md schema — `sprints` array added after `sprint_1`, write rules, STATUS REPORTING, HARD STOP 2 write block), `gadp/agents/planner.md` (FLOW4-PLAN envelope — `resume_patch` added), `gadp/agents/auditor.md` (clean audit `resume_patch` — `sprints` update added, violations `resume_patch` — `sprints` update added).
+
+---
+
+### Fix B2: No contract dependency ordering
+
+**What was wrong.** Sprint planning composed contracts by priority and theme but did not model implementation order within a sprint. If OC-B depended on a table that OC-A's migration created, the Builder discovered the ordering from the data model — but a wrong order produced test failures that looked like bugs. Circular dependencies were not detected before planning.
+
+**What changed.** `depends_on` field added to the contract schema as an optional list of OC-NNN IDs. `gadp_append_contract.py` gains format validation (list, OC-NNN format, no self-reference). `gadp_validate.py` gains cross-file existence checks and a DFS cycle detection pass over the full dependency graph. `outcome-resolver.md` Phase 6 gains a `depends_on` derivation rule section with three positive triggers (schema dependency, full-stack pair ordering, auth gate dependency) and three negative cases. `planner.md` Flow 4 Step 2 gains a `depends_on` ordering subsection: topological sort within phases, cross-phase deps handled by structure, prior-sprint deps ignored, circular dep detected → halt FLOW4-PLAN, return conflict envelope.
+
+**Files changed:** `gadp/scripts/gadp_append_contract.py` (OPTIONAL_FIELDS, docstring, validate_contract(), normalise section), `gadp/scripts/gadp_validate.py` (per-contract format check, cross-reference pass, cycle detection pass), `gadp/agents/outcome-resolver.md` (Phase 6 — `depends_on` derivation rule section, contracts.yaml output schema), `gadp/agents/planner.md` (Flow 4 Step 2 — `depends_on` ordering subsection).
+
+---
+
+### Fix C1: Default model assignments inverted for governance agents
+
+**What was wrong.** The default `opencode.json` assigned the Auditor `nvidia/z-ai/glm4.7` (small, fast) and the Planner `nvidia/deepseek-ai/deepseek-v4-flash` (flash variant). Governance agents make decisions with wider blast radius than the Builder — an Auditor missing an invariant violation produces false confidence in a governance gate; a Planner producing wrong impact analysis corrupts decisions.yaml. Flash/lite variants are the wrong choice for the highest-stakes agents.
+
+**What changed.** `OPENCODE_SETUP.md` gains a "Model Selection Principles" subsection before the Recommended Models table. States the rule plainly with specific ✅/❌ model examples, explains the blast-radius asymmetry, draws the cost-reduction line explicitly. Model changes to `opencode.json` are left to the operator (intentionally not modified in v3.4 — the owner configures their own `opencode.json`).
+
+**Files changed:** `OPENCODE_SETUP.md` (Model Selection Principles — new subsection).
+
+---
+
+### Fix D1: GADP repo has no CI for its own scripts
+
+**What was wrong.** GADP generates a CI pipeline for every project it governs. The GADP repository had no CI. Regressions introduced into mutation scripts had no automated catch.
+
+**What changed.** `.github/workflows/gadp-ci.yml` added. Three jobs: Python syntax check (`py_compile`) for all scripts, mutation script smoke tests against fixture YAML files in `tests/fixtures/`, and `gadp_validate.py` self-test against valid and invalid fixtures. `tests/fixtures/` contains minimal valid GADP YAML examples that pass `gadp_validate.py`. `requirements.txt` added with `pyyaml`.
+
+**Files changed:** `.github/workflows/gadp-ci.yml` (new), `tests/fixtures/*.yaml` (new — six fixture files), `requirements.txt` (new).
+
+---
+
+### Fix D2: project-init-schema.json
+
+**What was wrong.** The `project-init.json` schema was documented only in `gadp_init_project.py`'s docstring. Users writing config files had to read Python source to understand the schema. No IDE autocompletion, no validation.
+
+**What changed.** `gadp/config/project-init-schema.json` added — JSON Schema (draft-07) covering every field in the `project-init.json` config. Field descriptions, enums, format constraints, examples in the file header. `additionalProperties: false` at top level catches typos. `README.md` step 3 updated to reference the schema file.
+
+**Files changed:** `gadp/config/project-init-schema.json` (new), `README.md` (step 3 — schema reference updated).
+
+---
+
+### Fix D3: production-ui skill
+
+**What was wrong.** `gadp/skills/frontend-design/SKILL.md` guided the Builder with aesthetic direction ("commit to a BOLD direction", "NEVER generic AI aesthetics") — appropriate for creative design but misaligned for a production build protocol. Structural requirements (four mandatory states, token compliance, a11y, responsive, state wiring) were in `builder.md` but not in a skill the Builder read alongside the aesthetic guide.
+
+**What changed.** `gadp/skills/production-ui/SKILL.md` added. Covers: four-state implementation guide (loading, empty, populated, error — what each requires, how to wire them to API calls, how to prevent flash), design token compliance pre-flight checklist with proactive grep commands, accessibility implementation guide (accessible names, focus management, keyboard navigation, contrast), responsive implementation requirements, state connection wiring guide. `builder.md` Step 1 UI contract block updated: two explicit read instructions with distinct purpose statements on the same line. `AGENTS.md` SKILLS table updated with `production-ui` row; Builder dispatch `relevant_files` updated to include both skills for UI contracts.
+
+**Files changed:** `gadp/skills/production-ui/SKILL.md` (new), `gadp/agents/builder.md` (Step 1 UI contract block), `AGENTS.md` (SKILLS table, Builder dispatch relevant_files).
+
+---
+
+## The v3.4 file manifest
+
+Files changed from v3.3:
+
+| File | Change type | Key changes |
+|---|---|---|
+| `gadp/agents/project-setup.md` | Updated | S0-T010 Hard Stop 1 removed, COMPLETION section rewritten |
+| `gadp/scripts/gadp_append_contract.py` | Updated | `depends_on` field: OPTIONAL_FIELDS, docstring, validation, default |
+| `gadp/scripts/gadp_validate.py` | Updated | `depends_on` format check, cross-reference check, cycle detection |
+| `AGENTS.md` | Updated | Version 3.4, `sprints` schema, write rules, STATUS REPORTING, HARD STOP 2 write, SKILLS table, Builder dispatch relevant_files |
+| `gadp/agents/outcome-resolver.md` | Updated | Version 3.4, `depends_on` derivation rule section, contracts.yaml schema |
+| `gadp/agents/planner.md` | Updated | Version 3.4, `depends_on` ordering subsection, FLOW4-PLAN `resume_patch` |
+| `gadp/agents/auditor.md` | Updated | Version 3.4, sprint gate `resume_patch` additions (both envelopes) |
+| `gadp/agents/builder.md` | Updated | Version 3.4, Step 1 UI contract block — two skills |
+| `OPENCODE_SETUP.md` | Updated | ToC, Model Selection Principles, Agent Write Permissions section, Claude Code Key Differences, Example 1 annotation |
+| `README.md` | Updated | Version 3.4, two hard stops, Sprints section, Skills table, step 3 schema ref, Compatible Tools |
+| `gadp-handoff.md` | Updated | Version 3.4, three stale annotations, v3.4 section, design decisions, improvement areas |
+| `gadp/skills/production-ui/SKILL.md` | New | Production UI structural requirements skill |
+| `gadp/config/project-init-schema.json` | New | JSON Schema for project-init.json |
+| `.github/workflows/gadp-ci.yml` | New | CI for GADP repo scripts |
+| `tests/fixtures/*.yaml` | New | Six minimal valid GADP YAML fixture files |
+| `requirements.txt` | New | `pyyaml` for CI |
+
+---
+
+## Key design decisions to preserve
+
+Added in v3.3:
+
+- **Two execution modes.** Setup agents inline, development agents dispatched. Do not apply the DISPATCH BOUNDARY to setup agents.
+- **`edit: deny` in opencode.json is OpenCode-specific.** In Claude Code, the Planner uses the edit tool directly. The authority model is instruction-enforced in Claude Code, not permission-enforced.
+- **Governance agents need full-capability models.** Never assign lite/flash variants to Auditor or Planner. Builder mistakes are recoverable in the next retry. Governance mistakes have wider blast radius.
+- **Skills are read by sub-agents, not the Governor.** The Governor includes skill paths in `relevant_files` at dispatch time.
+
+Added in v3.4:
+
+- **`sprints` array is append-only and maintained by Planner + Auditor.** Governor reads it for STATUS REPORTING. Governor never writes to it directly. Sprint 1's entry is seeded by the Governor at HARD STOP 2 approval, then owned by Planner and Auditor thereafter.
+- **`depends_on` is an implementation order rule, not a sprint assignment rule.** Cross-sprint dependencies are handled by sprint assignment. `depends_on` is for within-sprint ordering only.
+- **Circular `depends_on` chains are a contract design error, not a planner problem.** If the Planner detects a circular dependency during sprint composition, it halts FLOW4-PLAN and returns a conflict envelope. The user resolves the cycle through Flow 3 before planning continues.
+- **`frontend-design` and `production-ui` are complementary, not interchangeable.** `frontend-design` governs aesthetic direction. `production-ui` governs structural requirements. Both are mandatory for every UI contract.
+- **The GADP repo now has CI for its own scripts.** Any change to a mutation script must pass the three-job CI workflow before merging.
+
+---
+
+## Improvement areas identified but not yet implemented
+
+These were discussed or noted but not addressed in v3.4. Good candidates for the next round.
+
+1. **`gadp status` shortcut** — a one-liner the Governor recognises that prints current phase, sprint, passing/failing counts, and the next action. Useful for re-orienting without triggering a full session start.
+
+2. **Sub-agent output logs in `./gadp/logs/`** — one completion record per dispatch. Governor reads logs to construct status reports rather than re-reading all YAML on every session start. Partially superseded by `./tmp/builder-progress.yaml` for Builder state, but a broader log would reduce context usage on mature projects.
+
+3. **Per-intent checkpoint granularity inside capability batches** — currently confirmed batches are written as whole batches. If a session ends mid-batch (user confirmed 3 of 5 intents in batch 2), those 3 are not individually persisted. The `derived_context.capability_derivation_notes` added in v3.1 partially addresses this, but fine-grained per-intent confirmation tracking would be more resilient.
+
+4. **Prototype mode contracts** — mentioned in Planner Flow 6 but not fully specified. A lightweight contract variant that explicitly skips typechecks and coverage for time-boxed exploration, then converts to full contracts or gets discarded. Needs a clear entry path and governance rules to prevent prototype mode from becoming a backdoor around invariants.
+
+5. **Explicit disagreement flow** — currently when a user wants to change a derived decision, the path is: user describes change → Governor detects conflict → Planner does impact analysis → `/approve-decisions`. The Governor's CONFLICT DETECTION section handles this, but a dedicated "I disagree with X" flow that prompts the user through the Planner more smoothly would reduce friction.
+
+6. **~~`project-init.json` schema documentation~~** — resolved in v3.4. `gadp/config/project-init-schema.json` added.
+
+7. **Invariant detection hardening** — several `auto_detectable: true` invariants use grep patterns with false positive risk (comments, disabled code, test files triggering matches). The `adaptation_notes` field acknowledges framework-specific adjustments, but a more precise detection approach (AST-based or linter-based) would reduce noise on large codebases.
+
+8. **Audit log archive queryability** — when `audit-log.yaml` exceeds 150 events, older entries are archived. A fresh session on a large project cannot verify early sprint history from the active log. An index file or structured archive naming convention would make historical audit queries possible without reconstructing from events.
 
 ---
 

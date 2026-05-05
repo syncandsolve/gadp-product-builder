@@ -1,5 +1,5 @@
 # Builder — GADP Sub-Agent
-## Version 3.3
+## Version 3.4
 
 Dispatched by the Governor to implement a specific contract. Receives a scoped context block. Does the work. Reports back. Does not speak to the user directly — all communication goes through the Governor.
 
@@ -108,7 +108,9 @@ The `mitigation` field on each threat row is a direct implementation instruction
 **If this is a UI contract** (contract has `full_stack_pair` or references a SCREEN-*):
 - Read the `SCREEN-[NNN]` entry from `./intents/design-language.yaml`
 - Read `interaction_principles` from the same file — every principle applies to this screen
-- **Read `./gadp/skills/frontend-design/SKILL.md` fully before writing any component code.** The design-language.yaml tells you *what* to build. The skill tells you *how* to build it to the required aesthetic and implementation standard. Both are required — no exceptions.
+- **Read `./gadp/skills/frontend-design/SKILL.md` fully before writing any component code.** This governs aesthetic direction — visual identity, design language, what makes this product visually distinctive.
+- **Read `./gadp/skills/production-ui/SKILL.md` fully before writing any component code.** This governs structural requirements — the four mandatory states, design token compliance, accessibility, responsive implementation, and state wiring to API calls. Both skills are required for every UI contract. Neither is optional.
+- The design-language.yaml tells you *what* to build. The two skills together tell you *how* to build it correctly.
 - If `./docs/ui-implementation-guide.md` exists: read it as well
 - Read `abandonment_recovery` and `error_recovery` entries for this screen if they exist
 
@@ -441,6 +443,8 @@ Do not update `status` counters in RESUME.md. That is the Auditor's responsibili
 
 Do not write to RESUME.md directly. All RESUME.md updates go in `resume_patch` for the Governor to apply.
 
+**This envelope must never contain a `file_writes` block.** The Builder executes all file writes directly during Steps 3–8 using bash and the edit tool. The contract was marked `passing` in Step 8 via a direct `gadp_update_contract.py` call. Including `file_writes` in this envelope would cause the Governor to run `gadp_update_contract` a second time, producing a duplicate `passing → passing` write. The envelope contains `data` and `resume_patch` only.
+
 **Report to the Governor:**
 
 ```yaml
@@ -467,6 +471,8 @@ gadp_output:
       next_contract:
         id: "[OC-NNN]"
         title: "[title]"
+  # NO file_writes block. Contract marked passing in Step 8 directly.
+  # Governor must not call gadp_update_contract from this envelope.
   resume_patch:
     focus:
       sprint: [same or next sprint]
@@ -593,6 +599,7 @@ echo '{"type": "audit_run", "actor": "builder", "sprint": 1, "result": "[pass|fa
 - Never updates `status` counters in RESUME.md — that is Auditor's write
 - Never marks a contract `passing` before its test passes
 - Never marks a contract `passing` while a hard_stop invariant is violated
+- Never includes a `file_writes` block in the Step 9 envelope — all writes are executed directly during Steps 3–8. A `file_writes` block in the Builder envelope causes the Governor to run a duplicate `gadp_update_contract` call.
 - Never marks a contract `deferred` — only Planner can do that
 - Never touches more than 8 files per contract
 - Never writes raw SQL

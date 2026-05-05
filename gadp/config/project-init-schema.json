@@ -1,0 +1,468 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/syncandsolve/gadp-product-builder/gadp/config/project-init-schema.json",
+  "title": "GADP project-init.json",
+  "description": "Schema for the project-init.json config file consumed by gadp_init_project.py. Produces all nine initial GADP YAML files. Run: python3 gadp/scripts/gadp_init_project.py --config project-init.json",
+  "type": "object",
+  "additionalProperties": false,
+
+  "examples": [
+    {
+      "project_name": "TaskFlow",
+      "product_type": "Web SaaS",
+      "has_ui": true,
+      "has_backend": true,
+      "has_database": true,
+      "has_auth": true,
+      "regulatory_exposure": "GDPR",
+      "data_sensitivity": "SENSITIVE",
+      "product": {
+        "name": "TaskFlow",
+        "tagline": "Project management for small teams that actually ships",
+        "solution_map": {
+          "problem": "Small teams lose track of tasks across Slack, email, and sticky notes",
+          "for_whom": "Product and engineering teams of 2-15 people",
+          "severity": "high"
+        }
+      },
+      "stack_preferences": {
+        "language": "TypeScript",
+        "framework": "Next.js",
+        "database": "PostgreSQL",
+        "orm": "Prisma",
+        "auth_strategy": "Custom JWT"
+      },
+      "capabilities": [
+        {
+          "id": "CI-001",
+          "label": "User can register with email and password",
+          "scope": "core",
+          "security_surface": true,
+          "security_concern_type": "auth_credential",
+          "inferred": false
+        },
+        {
+          "id": "CI-002",
+          "label": "User can create and assign tasks",
+          "scope": "core",
+          "security_surface": false,
+          "inferred": false
+        }
+      ],
+      "quality_intents": [
+        {
+          "id": "QI-LCP",
+          "label": "LCP <= 2.5s on median hardware",
+          "type": "hard",
+          "scale_trigger": "p75 LCP exceeds 2.5s",
+          "measurement_method": "Lighthouse CI"
+        }
+      ],
+      "kpis": [
+        {
+          "id": "KPI-001",
+          "label": "100 active users within 90 days of launch",
+          "north_star": true
+        }
+      ]
+    }
+  ],
+
+  "required": [
+    "project_name",
+    "product_type",
+    "has_ui",
+    "has_backend",
+    "has_database",
+    "has_auth"
+  ],
+
+  "properties": {
+
+    "project_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID v4 for this project. Generated automatically by gadp_init_project.py if absent. Provide it only when re-initialising an existing project to preserve the ID."
+    },
+
+    "project_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "description": "Human-readable project name. Used as the primary identifier in GADP files and the audit log."
+    },
+
+    "product_type": {
+      "type": "string",
+      "enum": [
+        "Web SaaS",
+        "Internal tool",
+        "Marketing site",
+        "API product",
+        "Chrome extension",
+        "Desktop app",
+        "Mobile-first PWA",
+        "CLI tool",
+        "Composite"
+      ],
+      "description": "Product category. Determines which GADP invariants, quality intent defaults, and CI/CD templates are activated. 'Composite' is for products that span multiple categories."
+    },
+
+    "has_ui": {
+      "type": "boolean",
+      "description": "True if the product has any user-facing interface (web, desktop, extension popup). When true: design-language.yaml is generated, UI contracts are expected, INV-DQ-* design token invariants are active, and the Builder reads frontend skills for UI contracts."
+    },
+
+    "has_backend": {
+      "type": "boolean",
+      "description": "True if the product has a server-side application layer. When true: openapi.yaml stub is generated, API contracts are expected, and the invariant system includes auth and error response shape checks."
+    },
+
+    "has_database": {
+      "type": "boolean",
+      "description": "True if the product uses a persistent database. When true: ORM-only invariant (INV-D-001) is active, migration requirements apply to schema contracts, and the data lifecycle section of the intent store is populated."
+    },
+
+    "has_auth": {
+      "type": "boolean",
+      "description": "True if the product has user authentication. When true: auth-specific invariants are active (httpOnly cookie, RBAC server-side), auth contracts are expected in Sprint 1, and STRIDE threat model includes authentication threats."
+    },
+
+    "regulatory_exposure": {
+      "type": "string",
+      "enum": ["none", "GDPR", "HIPAA", "PCI-DSS", "SOC2"],
+      "default": "none",
+      "description": "Regulatory framework the product operates under. Determines which mandatory quality intents and compliance contracts are added. HIPAA takes precedence over GDPR if both apply — model two separate projects or use HIPAA only. PCI-DSS uses scope reduction logic: cardholder data never touches application servers."
+    },
+
+    "data_sensitivity": {
+      "type": "string",
+      "enum": ["none", "INTERNAL", "SENSITIVE", "RESTRICTED"],
+      "default": "none",
+      "description": "Sensitivity classification of the data the product handles. SENSITIVE: PII, health data, financial records. RESTRICTED: credentials, cryptographic material, regulated health information. Affects which threat mitigations are mandatory."
+    },
+
+    "product": {
+      "type": "object",
+      "description": "Product identity block. Written to intent-store.yaml → product. If absent, gadp_init_project.py generates a stub — replace it before running the Intent Architect.",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Product name as it will appear to users and in marketing material."
+        },
+        "tagline": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "One sentence value proposition. Should name the problem, the audience, and the differentiator."
+        },
+        "solution_map": {
+          "type": "object",
+          "description": "Problem-solution framing. Used by the Intent Architect to derive capability intents and by the Outcome Resolver to prioritise architectural decisions.",
+          "additionalProperties": false,
+          "properties": {
+            "problem": {
+              "type": "string",
+              "description": "The specific problem the product solves. One to three sentences."
+            },
+            "for_whom": {
+              "type": "string",
+              "description": "Who experiences the problem — be specific. 'Small teams' is better than 'people'."
+            },
+            "severity": {
+              "type": "string",
+              "enum": ["low", "medium", "high"],
+              "description": "How severe the problem is for the target audience. Affects Sprint 1 scope prioritisation."
+            }
+          }
+        }
+      }
+    },
+
+    "stack_preferences": {
+      "type": "object",
+      "description": "Preferred technology stack. All fields are optional — the Outcome Resolver selects defaults based on product_type and has_* flags if absent. Preferences here are treated as strong signals, not hard requirements.",
+      "additionalProperties": false,
+      "properties": {
+        "language": {
+          "type": "string",
+          "description": "Primary programming language. Example: 'TypeScript', 'Python', 'Go'."
+        },
+        "framework": {
+          "type": "string",
+          "description": "Application framework. Example: 'Next.js', 'FastAPI', 'Rails'."
+        },
+        "database": {
+          "type": "string",
+          "description": "Database engine. Example: 'PostgreSQL', 'MySQL', 'SQLite'."
+        },
+        "orm": {
+          "type": "string",
+          "description": "ORM or query builder. Example: 'Prisma', 'SQLAlchemy', 'ActiveRecord'. Required if has_database is true — INV-D-001 (ORM only, no raw SQL) is active."
+        },
+        "auth_strategy": {
+          "type": "string",
+          "description": "Authentication approach. Example: 'Custom JWT', 'NextAuth.js', 'Clerk'. If has_auth is true and this is absent, the Outcome Resolver selects a default appropriate to the framework."
+        }
+      }
+    },
+
+    "capabilities": {
+      "type": "array",
+      "description": "Capability intents — what the product can do. At least one core capability is required if this array is non-empty. If empty or absent, the Intent Architect generates these interactively from the product description.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "scope"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^CI-[0-9]{3,}$",
+            "description": "Unique capability intent ID in CI-NNN format. Must be unique across the full capabilities list."
+          },
+          "label": {
+            "type": "string",
+            "minLength": 5,
+            "description": "Capability statement written from the user's perspective. 'User can X' or 'System can X'. Be specific enough that a test can verify it."
+          },
+          "scope": {
+            "type": "string",
+            "enum": ["core", "extension", "future"],
+            "description": "Sprint assignment scope. core: Sprint 1 candidates. extension: Sprint 2+. future: explicitly deferred — requires inclusion_trigger."
+          },
+          "security_surface": {
+            "type": "boolean",
+            "default": false,
+            "description": "True if this capability handles credentials, session tokens, PII, or any data that would generate a STRIDE threat. Triggers automatic STRIDE threat derivation for this capability."
+          },
+          "security_concern_type": {
+            "type": "string",
+            "enum": [
+              "auth_credential",
+              "session_management",
+              "pii_handling",
+              "payment_data",
+              "rbac_enforcement",
+              "data_export",
+              "file_upload",
+              "external_api_key"
+            ],
+            "description": "Type of security concern. Required when security_surface is true. Determines which STRIDE threat categories are applied."
+          },
+          "inferred": {
+            "type": "boolean",
+            "default": false,
+            "description": "True if this capability was derived by the Intent Architect from other capabilities, not stated explicitly by the user. Examples: password reset inferred from auth, email verification inferred from registration."
+          },
+          "deferral_reason": {
+            "type": "string",
+            "description": "Why this capability is deferred. Required when scope is 'future'."
+          },
+          "inclusion_trigger": {
+            "type": "string",
+            "description": "The condition that would move this capability into scope. Required when scope is 'future'. Example: 'When MRR exceeds $10k/month' or 'When enterprise tier is launched'."
+          }
+        }
+      }
+    },
+
+    "quality_intents": {
+      "type": "array",
+      "description": "Quality targets that apply to the whole product, not a single feature. Mandatory quality intents (LCP, CLS, INP, bundle size, a11y, uptime, error rate) are added automatically by gadp_init_project.py based on product_type — do not duplicate them here.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "type"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^QI-[A-Z0-9_-]+$",
+            "description": "Unique quality intent ID. QI-LCP, QI-CLS, QI-INP, QI-BUNDLE, QI-A11Y, QI-UPTIME, QI-ERROR-RATE are reserved for mandatory intents."
+          },
+          "label": {
+            "type": "string",
+            "description": "Quality target in measurable terms. Include the metric, the threshold, and the condition. Example: 'LCP <= 2.5s at p75 on median mobile hardware'."
+          },
+          "type": {
+            "type": "string",
+            "enum": ["hard", "soft"],
+            "description": "hard: sprint gate fails if this target is not met. soft: tracked, surfaced as an audit flag, does not block the gate."
+          },
+          "scale_trigger": {
+            "type": "string",
+            "description": "The condition under which this quality target must be re-evaluated. Example: 'p75 LCP exceeds 2.5s for three consecutive deploys'."
+          },
+          "measurement_method": {
+            "type": "string",
+            "description": "How this quality target is measured. Example: 'Lighthouse CI', 'Datadog SLO', 'k6 load test'."
+          }
+        }
+      }
+    },
+
+    "security_intents": {
+      "type": "array",
+      "description": "Explicit security requirements beyond what STRIDE derives automatically. Most security requirements are generated by the Outcome Resolver — use this field only for requirements that come from a security review or compliance mandate not covered by STRIDE.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^SI-[0-9]{3,}$",
+            "description": "Unique security intent ID in SI-NNN format."
+          },
+          "label": {
+            "type": "string",
+            "description": "Security requirement in measurable terms."
+          },
+          "source": {
+            "type": "string",
+            "description": "Where this requirement comes from. Example: 'PCI-DSS 4.0 requirement 6.4', 'Internal security review 2025-03'."
+          }
+        }
+      }
+    },
+
+    "constraints": {
+      "type": "array",
+      "description": "Hard constraints that apply to the project — budget, timeline, team size, technology mandates. These are not quality targets — they are fixed parameters that the Outcome Resolver must work within.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^CON-[0-9]{3,}$",
+            "description": "Unique constraint ID in CON-NNN format."
+          },
+          "label": {
+            "type": "string",
+            "description": "Constraint stated precisely. Example: 'Must deploy to Vercel — no custom server infrastructure'."
+          },
+          "type": {
+            "type": "string",
+            "enum": ["budget", "timeline", "team", "technology", "compliance", "other"],
+            "description": "Constraint category."
+          }
+        }
+      }
+    },
+
+    "kpis": {
+      "type": "array",
+      "description": "Business KPIs that define success for this product. At most one should have north_star: true.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^KPI-[0-9]{3,}$",
+            "description": "Unique KPI ID in KPI-NNN format."
+          },
+          "label": {
+            "type": "string",
+            "description": "KPI stated with a specific target and timeframe. Example: '100 active users within 90 days of launch'."
+          },
+          "north_star": {
+            "type": "boolean",
+            "default": false,
+            "description": "True for the single most important KPI. At most one KPI should be the north star."
+          }
+        }
+      }
+    },
+
+    "assumptions": {
+      "type": "array",
+      "description": "Assumptions the product is built on that have not been validated. Surfaced in the intent store as risks. Example: 'Users will prefer email registration over OAuth'.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^ASM-[0-9]{3,}$",
+            "description": "Unique assumption ID in ASM-NNN format."
+          },
+          "label": {
+            "type": "string",
+            "description": "The assumption stated as a falsifiable claim."
+          },
+          "validation_method": {
+            "type": "string",
+            "description": "How this assumption will be validated. Example: 'User interviews with 10 target users before Sprint 2'."
+          }
+        }
+      }
+    },
+
+    "contracts": {
+      "type": "array",
+      "description": "Pre-populated contracts. Normally empty at init — the Outcome Resolver generates contracts after architecture decisions are made. Include contracts here only when bootstrapping from an existing project-init.json that already has defined contracts.",
+      "items": {
+        "type": "object",
+        "description": "Contract stub. See gadp_append_contract.py for the full contract schema and validation rules."
+      }
+    },
+
+    "design": {
+      "type": "object",
+      "description": "Design system configuration. Only required when has_ui is true and design tokens are known before the Intent Architect runs. If absent and has_ui is true, gadp_init_project.py generates a design-language.yaml stub with placeholder tokens.",
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["described", "figma", "uploaded"],
+          "description": "How the design language was derived. 'described': tokens derived from text description during the Intent Architect session. 'figma': tokens extracted from a Figma file. 'uploaded': tokens from an uploaded style guide."
+        },
+        "tokens": {
+          "type": "object",
+          "description": "Design token values to pre-populate in design-language.yaml.",
+          "additionalProperties": false,
+          "properties": {
+            "component_library": {
+              "type": "string",
+              "description": "UI component library. Example: 'shadcn/ui', 'Radix UI', 'Chakra UI', 'Headless UI', 'None'."
+            },
+            "css_approach": {
+              "type": "string",
+              "description": "CSS methodology. Example: 'Tailwind CSS', 'CSS Modules', 'Styled Components'."
+            },
+            "icon_library": {
+              "type": "string",
+              "description": "Icon library. Example: 'lucide-react', 'heroicons', 'phosphor-icons'."
+            },
+            "colors": {
+              "type": "object",
+              "description": "Color token values. These map to Tailwind CSS theme tokens — use semantic names, not raw hex values. The INV-DQ-001 invariant enforces that no hex values appear in source files; these values configure the theme, they do not appear in component code.",
+              "properties": {
+                "primary": { "type": "string" },
+                "secondary": { "type": "string" },
+                "accent": { "type": "string" },
+                "neutrals": { "type": "object" },
+                "semantic": { "type": "object" }
+              }
+            },
+            "typography": {
+              "type": "object",
+              "description": "Typography token values.",
+              "properties": {
+                "heading": { "type": "string", "description": "Heading font family." },
+                "body": { "type": "string", "description": "Body font family." },
+                "mono": { "type": "string", "description": "Monospace font family for code." }
+              }
+            }
+          }
+        }
+      }
+    }
+
+  }
+}

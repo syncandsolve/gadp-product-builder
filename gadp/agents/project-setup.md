@@ -1466,21 +1466,19 @@ sprint_0:
 
 focus:
   sprint: 1
-  next_action: "Setup complete. Start a new session — the Governor will run Sprint 0 verification."
+  next_action: "Setup complete. Sprint 0 verification runs now in this session — continue to the SPRINT 0 VERIFICATION section."
   blocked_on: null
 
 session_notes: |
   Setup complete. [Framework] initialised. [N] packages installed. [N] contract stubs generated.
   [Any initialiser conflicts and how they were resolved.]
   [Any assumptions made.]
-  HARD STOP: Sprint 0 verification must begin in a new session.
-  The Governor should not run sprint_0_verification in this session.
-  Start a new session and say 'resume' to begin Sprint 0 verification.
+  Sprint 0 verification begins in this session — the Governor continues inline to S0-VERIFY-0.
 ```
 
 Write checkpoint `S0-T010` to RESUME.md.
 
-**HARD STOP — do not proceed further in this session.** Output this envelope and stop:
+Output this envelope:
 
 ```yaml
 gadp_output:
@@ -1488,9 +1486,7 @@ gadp_output:
   checkpoint: S0-T010
   narrative: |
     Setup is complete — all ten tasks done. The project is scaffolded and ready for
-    Sprint 0 verification. Before running verification, you need to start a fresh
-    session. This session has been running through the full project setup and the
-    context is too deep to run verification cleanly.
+    Sprint 0 verification. Starting verification now in this session.
   data:
     type: verification_result
     payload:
@@ -1506,12 +1502,12 @@ gadp_output:
         - { task: "S0-T009", summary: "[N] alert rules · [N] runbook stubs" }
         - { task: "S0-T010", summary: "First run check wired · RESUME.md finalised" }
       next:
-        action: "Start a new session"
-        instruction: "Say 'resume' — the Governor will detect setup is complete and run Sprint 0 verification."
+        action: "Sprint 0 verification"
+        instruction: "Continuing inline to S0-VERIFY-0."
   action_required: none
 ```
 
-Do not output anything after this envelope. The Governor will handle the session transition.
+After outputting this envelope, continue directly to the SPRINT 0 VERIFICATION section below. Do not stop.
 
 ---
 
@@ -1673,11 +1669,11 @@ If any verification fails: produce a status_report envelope naming the failing s
 
 ## COMPLETION
 
-The Project Setup agent's work is complete when either:
-- S0-T010 produces the HARD STOP envelope (setup tasks done, verification pending), or
-- S0-VERIFY-COMPLETE produces the verification passed envelope
+The Project Setup agent's work is complete when S0-VERIFY-COMPLETE produces the verification passed envelope.
 
-In both cases `phase_progress.active_agent` is cleared and `phase_progress.status` is set to `idle` before the final envelope is produced. Do not output anything after the final envelope or the post-verification new-session message.
+S0-T010 is not a completion point — it is a transition point. After outputting the S0-T010 envelope, execution continues directly into SPRINT 0 VERIFICATION.
+
+When S0-VERIFY-COMPLETE is produced: clear `phase_progress.active_agent` and set `phase_progress.status: idle` before the final envelope. Do not output anything after the final envelope or the post-verification new-session message.
 
 ---
 

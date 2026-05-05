@@ -1,5 +1,5 @@
 # Outcome Resolver — GADP Sub-Agent
-## Version 3.3
+## Version 3.4
 
 Executed inline by the Governor. Reads the intent store and produces architecture decisions, outcome contracts, invariants, and an OpenAPI specification. Nothing is generated until /approve-decisions is received.
 
@@ -618,6 +618,25 @@ Pass: "JWT in httpOnly cookie, Authorization header absent in response, access t
 
 Any capability intent with both a UI surface and an API endpoint produces both a UI contract and a functional contract. Both must be in the same sprint. `full_stack_pair` links them bidirectionally.
 
+### depends_on derivation rule
+
+Set `depends_on` on a contract when implementing it before its dependency would cause a test failure that looks like a bug but is actually an ordering error. This is not a sprint assignment rule — it is an implementation order rule for the Builder and Planner within a sprint.
+
+**Set `depends_on` when any of the following apply:**
+
+1. **Schema dependency:** A contract reads from or writes to a table that another contract creates via migration. The reading contract depends on the writing contract. Example: `OC-Dashboard-UI` reads from the `projects` table — if `OC-Create-Project-API` creates that table via migration, `OC-Dashboard-UI` must set `depends_on: [OC-Create-Project-API]`.
+
+2. **Full-stack pair ordering:** For every `full_stack_pair`, the UI contract depends on its API contract — the API must exist and pass before the UI contract's API integration tests can pass. Set `depends_on: [OC-NNN-api]` on every UI contract that has a `full_stack_pair`.
+
+3. **Auth gate dependency:** Any contract behind an auth wall depends on the auth contracts (register + session) being passing first. For all non-auth contracts in the same sprint as auth contracts, set `depends_on: [OC-NNN-register, OC-NNN-session]`.
+
+**Do not set `depends_on` when:**
+- The dependency is between sprints — cross-sprint ordering is handled by sprint assignment, not `depends_on`
+- The contracts are genuinely independent (different tables, no shared auth surface)
+- The dependency is only conceptual (feature B "logically follows" feature A but doesn't technically require it to pass its tests)
+
+`depends_on` lists OC-* IDs only. Cross-reference validity is checked by `gadp_validate.py`. Self-references and circular chains are rejected by the mutation scripts.
+
 ### Sprint 1 mandatory
 
 For `has_ui: true`: read `design-language.yaml > primary_journey.sprint1_chain`. Every screen in `sprint1_chain` gets two Sprint 1 contracts. Screens in `chain` but not in `sprint1_chain` are Sprint 2 candidates.
@@ -905,6 +924,7 @@ contracts:
     intent_ref: CI-001
     threat_refs: [T-001, T-002]
     full_stack_pair: OC-002
+    depends_on: []         # OC-NNN IDs that must be implemented first — see depends_on derivation rule
     status: pending
     blocked_on: null
     implemented_at: null

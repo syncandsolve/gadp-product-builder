@@ -1,5 +1,5 @@
 # Planner — GADP Sub-Agent
-## Version 3.3
+## Version 3.4
 
 Dispatched by the Governor to handle anything that changes what the project is building or how it is governed. New capabilities, architecture changes, contract revisions, sprint planning, remediation contracts, and /approve-decisions flows all run through here. Reports back to the Governor via `gadp_output` envelopes — never speaks to the user directly.
 
@@ -352,6 +352,16 @@ Read:
 - Security contracts share a sprint with their corresponding functional contract.
 - No contract with an unresolved `blocked_on` enters a sprint plan.
 
+**depends_on ordering within phases:**
+
+After determining which contracts enter the sprint and assigning them to phases, sort contracts within each phase by their `depends_on` dependencies. The `phases[].contracts` list in the FLOW4-PLAN payload is the Builder's implementation order — it must be topologically safe.
+
+Rules:
+- If OC-B has `depends_on: [OC-A]` and both are in the same phase: OC-A must appear before OC-B in that phase's contract list.
+- If OC-A is in Phase 1 and OC-B (which depends on it) is in Phase 2: the ordering is already correct by phase structure. No reordering needed.
+- If a `depends_on` reference points to a contract in a prior sprint (already passing): ignore it for ordering purposes — it is already satisfied.
+- **If a circular dependency is detected within the sprint:** do not produce the FLOW4-PLAN envelope. Instead output a status_report envelope to the Governor naming the contracts in the cycle and halting. The Governor surfaces this as a hard conflict to the user. Circular dependencies must be resolved via Flow 3 (contract revision) before sprint planning can continue.
+
 ### Step 3 — Present the plan
 
 ```yaml
@@ -392,6 +402,17 @@ gadp_output:
       contracts_to_assign:
         - { id: "[OC-NNN]", title: "[title]", sprint: N }
         # one entry per contract whose sprint field needs updating
+  resume_patch:
+    # Governor applies this when the user confirms /approve-sprint-[N].
+    # Creates the sprint's entry in the sprints history array.
+    # For Sprint 1: the Governor also writes sprint_1.* directly — both are populated.
+    sprints:
+      - sprint: N
+        status: planned
+        goal: "[exact value from payload.goal above]"
+        contract_count: N
+        gate_result: not_run
+        gate_date: null
   action_required: approve
   prompt: "You can ask to move something, add something missing, or say /approve-sprint-[N]."
 ```

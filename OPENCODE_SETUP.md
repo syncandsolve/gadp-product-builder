@@ -8,8 +8,10 @@ This guide explains how to configure OpenCode to work with the GADP (Governance-
 - [Quick Start](#quick-start)
 - [Configuration Structure](#configuration-structure)
 - [Model Selection](#model-selection)
+- [Model Selection Principles](#model-selection-principles)
 - [Agent Configuration](#agent-configuration)
 - [Permissions](#permissions)
+- [Agent Write Permissions](#agent-write-permissions)
 - [Agentic Harness Compatibility](#agentic-harness-compatibility)
 - [Troubleshooting](#troubleshooting)
 - [Examples](#examples)
@@ -176,6 +178,21 @@ Examples:
 - `nvidia/qwen/qwen3-coder-480b-a35b-instruct`
 - `anthropic/claude-sonnet-4-5`
 - `openai/gpt-5`
+
+### Model Selection Principles
+
+Governance agents (Auditor and Planner) make decisions with wider blast radius than the Builder. A Builder mistake surfaces in the next test run and is correctable in the same session. An Auditor that misses an invariant violation produces false confidence in a governance gate — bad code ships. A Planner that produces incorrect impact analysis for an architecture change corrupts `decisions.yaml` and requires Flow 2 rollback.
+
+**Rule: Auditor and Planner must always use a full-capability model. Never a lite, flash, or mini variant.**
+
+- `deepseek-v4-flash` → ❌ not for Auditor or Planner. Use `deepseek-v3` or equivalent.
+- `glm4.7` → ❌ not for Auditor. Use `glm5` or a full-class reasoning model.
+- `qwen3-next-80b-a3b-thinking` → ✅ acceptable for Planner (thinking variant, full class).
+- `claude-sonnet-4-5` → ✅ acceptable for both.
+
+**Builder** implements one contract at a time and can recover from a mistake in the next retry. A coding-specialised model at any capability tier is appropriate.
+
+Cost reduction via smaller models is legitimate for the Builder. It is not legitimate for the Auditor or Planner. If cost is a hard constraint on governance agents, document the tradeoff explicitly — do not make it silently.
 
 ### Recommended Models by Task
 
@@ -368,6 +385,36 @@ Common variants:
 }
 ```
 
+## Agent Write Permissions
+
+The Auditor and Planner have `"edit": "deny"` in the OpenCode configuration. This is intentional and correct — **but only in OpenCode**. Understanding why matters before adapting GADP to any other harness.
+
+### Why Auditor and Planner have `edit: deny` in OpenCode
+
+The Planner is architecturally a write-heavy agent. It modifies `decisions.yaml`, `invariants.yaml`, contracts, and `openapi.yaml`. The Auditor writes to `audit-log.yaml` and produces `resume_patch` updates. Neither is read-only.
+
+In OpenCode, `"edit": "deny"` does not prevent these writes — it routes them through mutation scripts via `bash`. The Planner calls `python3 gadp/scripts/gadp_update_contract.py` through bash rather than writing YAML directly via the edit tool. `"bash": "allow"` is what enables this. The result is equivalent: YAML files are modified, but only through the validated mutation script path.
+
+This pattern enforces the contract: mutations go through scripts, not direct file writes. It is a mechanical reinforcement of the authority model.
+
+### Claude Code — `edit: deny` does NOT apply
+
+Claude Code does not read `opencode.json`. There is no equivalent permission configuration. When the Governor dispatches the Planner as a sub-agent in Claude Code:
+
+- The Planner uses the **edit tool directly** to write `decisions.yaml`, `invariants.yaml`, and contract updates.
+- There is no `edit: deny` in effect. The authority model (Planner only writes these files) is enforced by the Planner's instructions in `planner.md`, not by tool permissions.
+- The Planner must still call mutation scripts for GADP YAML (contracts, audit log, intent store) — this is an instruction-enforced rule, not a permission-enforced one.
+
+> ⚠️ **Warning:** If you copy the `"edit": "deny"` permission pattern from `opencode.json` into any Claude Code equivalent configuration, the Planner will fail on every `/approve-decisions` flow. In Claude Code, the Planner's write authority is instruction-enforced. Do not add `edit: deny` for the Planner or Auditor in Claude Code.
+
+### Summary by harness
+
+| Harness | Planner write path | Enforced by |
+|---|---|---|
+| OpenCode | Mutation scripts via `bash` (`edit: deny` prevents direct writes) | Tool permission + script validation |
+| Claude Code | Edit tool directly for governance files; mutation scripts for GADP YAML | Instructions in `planner.md` |
+| Other tools | Edit tool directly (same as Claude Code) | Instructions in `planner.md` |
+
 ## Agentic Harness Compatibility
 
 ### OpenCode (Native)
@@ -407,8 +454,8 @@ Claude Code supports the Task tool natively, which GADP uses for sub-agent dispa
 **Key Differences**:
 - Uses Anthropic models by default
 - Task tool creates subprocess isolation
-- Same permission system
-- No additional configuration needed
+- Same permission system **with one critical exception** — see Agent Write Permissions section
+- `"edit": "deny"` for Auditor/Planner **does not apply in Claude Code**. The Planner uses the edit tool directly for governance files. Do not add `edit: deny` for governance agents in Claude Code — it will break every `/approve-decisions` flow.
 
 ### Cursor
 
@@ -619,6 +666,8 @@ jq . opencode.json
 ## Examples
 
 ### Example 1: Cost-Optimized Configuration
+
+> ⚠️ **Note:** The Auditor and Planner models below are illustrative of cost-reduction options. Before substituting lite/flash variants for governance agents, read the [Model Selection Principles](#model-selection-principles) section. Flash variants are not recommended for Auditor or Planner in production builds.
 
 ```json
 {
