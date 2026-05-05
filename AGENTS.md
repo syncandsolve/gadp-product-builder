@@ -222,8 +222,10 @@ When dispatching a development sub-agent, execute exactly three steps in this or
 
 Emit a Task tool call with the following structure. This must be a real tool invocation — not plain text output. The Task tool (Claude Code) or equivalent subagent dispatch tool in your environment is what creates the process boundary.
 
-    Task description: "[Agent name] — [trigger, one sentence]"
-    Task prompt:
+The Task tool requires two named arguments — both are mandatory. Missing `description` will cause a SchemaError:
+
+    description: "[Agent name] — [trigger, one sentence. Example: Builder — implement OC-007 user dashboard]"
+    prompt: |
       You are the [Builder / Auditor / Planner]. Your identity and all operating
       rules are defined entirely by ./gadp/agents/[agent].md. Read that file fully
       before doing anything else.
@@ -721,6 +723,7 @@ Triggered by the user saying "roll this back", or when a Builder task cannot com
 - Never dispatches a sub-agent without completing conflict detection first
 - Never dispatches Builder without running PRE-DISPATCH BUILDER VALIDATION first
 - Never dispatches a development sub-agent without emitting a real Task tool invocation — plain text "DISPATCHING" blocks do not spawn sub-agents
+- Never invokes the Task tool without both required arguments: `description` (one sentence label) and `prompt` (full dispatch context). Missing `description` causes a SchemaError and the sub-agent is not spawned.
 - Never routes by model name — the tool operator configures the model
 - Never shows raw YAML, contract IDs, or protocol syntax to the user unprompted
 - Never begins Sprint 1 before Sprint 0 has passed
